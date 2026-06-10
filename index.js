@@ -11,18 +11,27 @@ const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
 const {
   AgentKit,
   CdpEvmWalletProvider,
+  CdpSmartWalletProvider,
   walletActionProvider,
   cdpApiActionProvider,
+  cdpSmartWalletActionProvider,
   legacyCdpWalletActionProvider,
   erc721ActionProvider,
   LegacyCdpWalletProvider,
 } = require("@coinbase/agentkit");
+const { CdpClient } = require("@coinbase/cdp-sdk");
+const { generateJwt } = require("@coinbase/cdp-sdk/auth");
 const { getLangChainTools } = require("@coinbase/agentkit-langchain");
 
 dotenv.config();
 
 const WALLET_DATA_PATH = path.join(__dirname, "wallet_data.txt");
-const NETWORK_ID = "base-sepolia";
+const NETWORK_ID = process.env.NETWORK_ID || "base-sepolia";
+
+const DEFAULT_RPC_URLS = {
+  "base-sepolia": "https://sepolia.base.org",
+  "base-mainnet": "https://mainnet.base.org",
+};
 
 /**
  * Resolves CDP credentials from the supported environment variables only.
@@ -61,6 +70,71 @@ function resolveCdpCredentials() {
     : pem;
 
   return { apiKeyId, apiKeySecretLegacy, apiKeySecretV2, walletSecret };
+}
+
+/**
+ * Returns true when the agent should use a CDP Smart Wallet with Base Paymaster.
+ *
+ * @param {object|undefined} existingWalletData
+ */
+function isBasePaymasterEnabled() {
+  if (process.env.USE_EOA_WALLET === "1" || process.env.USE_EOA_WALLET === "true") {
+    return false;
+  }
+
+  if (process.env.BASE_PAYMASTER === "0" || process.env.BASE_PAYMASTER === "false") {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Resolves the CDP Base Paymaster & Bundler endpoint for gas sponsorship.
+ *
+ * @param {ReturnType<typeof resolveCdpCredentials>} credentials
+ * @param {string} networkId
+ */
+async function resolveBasePaymasterUrl(credentials, networkId) {
+  const explicitUrl =
+    process.env.PAYMASTER_URL ||
+    process.env.BASE_PAYMASTER_URL ||
+    process.env.CDP_PAYMASTER_URL;
+
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const paymasterNetwork = networkId === "base-mainnet" ? "base" : "base-sepolia";
+  const basePath = "https://api.cdp.coinbase.com";
+  const jwt = await generateJwt({
+    apiKeyId: credentials.apiKeyId,
+    apiKeySecret: credentials.apiKeySecretV2,
+    requestMethod: "GET",
+    requestHost: "api.cdp.coinbase.com",
+    requestPath: "/apikeys/v1/tokens/active",
+  });
+
+  const response = await fetch(`${basePath}/apikeys/v1/tokens/active`, {
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to resolve Base Paymaster URL (${response.status}).`);
+  }
+
+  const { id } = await response.json();
+  return `${basePath}/rpc/v1/${paymasterNetwork}/${id}`;
+}
+
+/**
+ * @param {string} networkId
+ */
+function resolveRpcUrl(networkId) {
+  return process.env.RPC_URL || DEFAULT_RPC_URLS[networkId];
 }
 
 /**
@@ -119,7 +193,62 @@ async function persistWallet(walletProvider) {
 }
 
 /**
- * Creates the wallet provider, preferring CDP v2 when possible and falling back to legacy for deploy_token support.
+ * Finds an existing smart wallet owned by the given server wallet.
+ *
+ * @param {ReturnType<typeof resolveCdpCredentials>} credentials
+ * @param {string} ownerAddress
+ */
+async function findSmartWalletAddress(credentials, ownerAddress) {
+  const cdpClient = new CdpClient({
+    apiKeyId: credentials.apiKeyId,
+    apiKeySecret: credentials.apiKeySecretV2,
+    walletSecret: credentials.walletSecret,
+  });
+
+  const page = await cdpClient.evm.listSmartAccounts();
+  const match = page.accounts.find((account) =>
+    account.owners?.some((owner) => owner.toLowerCase() === ownerAddress.toLowerCase()),
+  );
+
+  return match?.address;
+}
+
+/**
+ * Creates a CDP Smart Wallet with Base Paymaster gas sponsorship.
+ *
+ * @param {ReturnType<typeof resolveCdpCredentials>} credentials
+ * @param {object|undefined} existingWalletData
+ */
+async function createSmartWalletProvider(credentials, existingWalletData) {
+  const { apiKeyId, apiKeySecretV2, walletSecret } = credentials;
+  const paymasterUrl = await resolveBasePaymasterUrl(credentials, NETWORK_ID);
+  const ownerAddress = existingWalletData?.ownerAddress || existingWalletData?.address;
+  let smartWalletAddress = existingWalletData?.ownerAddress
+    ? existingWalletData.address
+    : undefined;
+
+  if (!smartWalletAddress && ownerAddress) {
+    smartWalletAddress = await findSmartWalletAddress(credentials, ownerAddress);
+  }
+
+  const walletProvider = await CdpSmartWalletProvider.configureWithWallet({
+    apiKeyId,
+    apiKeySecret: apiKeySecretV2,
+    walletSecret,
+    networkId: NETWORK_ID,
+    rpcUrl: resolveRpcUrl(NETWORK_ID),
+    paymasterUrl,
+    owner: ownerAddress,
+    address: smartWalletAddress,
+    smartAccountName: existingWalletData?.ownerAddress ? existingWalletData.name : undefined,
+  });
+
+  return { walletProvider, walletMode: "smart", paymasterUrl };
+}
+
+/**
+ * Creates the wallet provider, preferring CDP Smart Wallet + Paymaster when enabled,
+ * then CDP v2, with legacy fallback for deploy_token support.
  *
  * @param {ReturnType<typeof resolveCdpCredentials>} credentials
  * @param {object|undefined} existingWalletData
@@ -127,7 +256,11 @@ async function persistWallet(walletProvider) {
 async function createWalletProvider(credentials, existingWalletData) {
   const { apiKeyId, apiKeySecretLegacy, apiKeySecretV2, walletSecret } = credentials;
 
-  if (existingWalletData?.address && !existingWalletData?.walletId) {
+  if (isBasePaymasterEnabled()) {
+    return createSmartWalletProvider(credentials, existingWalletData);
+  }
+
+  if (existingWalletData?.address && !existingWalletData?.walletId && !existingWalletData?.ownerAddress) {
     const walletProvider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId,
       apiKeySecret: apiKeySecretV2,
@@ -182,12 +315,12 @@ async function initializeAgent() {
   const existingWalletData = loadWalletData();
   const walletCreated = !existingWalletData;
 
-  const { walletProvider, walletMode } = await createWalletProvider(
+  const { walletProvider, walletMode, paymasterUrl } = await createWalletProvider(
     credentials,
     existingWalletData,
   );
 
-  if (walletCreated) {
+  if (walletCreated || walletMode === "smart") {
     await persistWallet(walletProvider);
   }
 
@@ -200,6 +333,8 @@ async function initializeAgent() {
 
   if (walletMode === "legacy") {
     actionProviders.push(legacyCdpWalletActionProvider(cdpConfig));
+  } else if (walletMode === "smart") {
+    actionProviders.push(cdpSmartWalletActionProvider());
   } else {
     actionProviders.push(cdpApiActionProvider());
   }
@@ -212,10 +347,16 @@ async function initializeAgent() {
   const focusedToolNames =
     walletMode === "legacy"
       ? new Set(["deploy_token", "mint", "get_wallet_details"])
-      : new Set(["mint", "get_wallet_details", "request_faucet_funds"]);
+      : walletMode === "smart"
+        ? new Set(["mint", "get_wallet_details", "native_transfer"])
+        : new Set(["mint", "get_wallet_details", "request_faucet_funds"]);
 
   const allTools = await getLangChainTools(agentKit);
-  const tools = allTools.filter((tool) => focusedToolNames.has(tool.name));
+  const tools = allTools.filter((tool) =>
+    [...focusedToolNames].some(
+      (name) => tool.name === name || tool.name.endsWith(`_${name}`),
+    ),
+  );
 
   if (tools.length === 0) {
     throw new Error(
@@ -236,12 +377,14 @@ async function initializeAgent() {
     llm,
     tools,
     checkpointer: memory,
-    prompt: `You are a helpful onchain agent powered by Coinbase CDP AgentKit on Base Sepolia.
+    prompt: `You are a helpful onchain agent powered by Coinbase CDP AgentKit on ${NETWORK_ID}.
 You can mint ERC-721 NFTs with mint (also referred to as mint_token).
 ${
   walletMode === "legacy"
     ? "You can deploy ERC-20 tokens with deploy_token."
-    : "You can request Base Sepolia test funds with request_faucet_funds."
+    : walletMode === "smart"
+      ? "You use a CDP Smart Wallet with Base Paymaster for sponsored (gasless) transactions. You can send ETH with native_transfer."
+      : "You can request Base Sepolia test funds with request_faucet_funds."
 }
 Before your first onchain action, call get_wallet_details to confirm the wallet address and network.
 Be concise, accurate, and explain transaction results clearly.`,
@@ -251,6 +394,10 @@ Be concise, accurate, and explain transaction results clearly.`,
   console.log("Registered tools:", tools.map((tool) => tool.name).join(", "));
   console.log("Wallet address:", walletProvider.getAddress());
   console.log("Network:", walletProvider.getNetwork().networkId);
+  if (walletMode === "smart") {
+    console.log("Owner address:", walletProvider.ownerAccount.address);
+    console.log("Base Paymaster:", paymasterUrl ? "enabled" : "disabled");
+  }
 
   return { agent, agentConfig, walletProvider };
 }
