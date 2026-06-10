@@ -33,6 +33,11 @@ const DEFAULT_RPC_URLS = {
   "base-mainnet": "https://mainnet.base.org",
 };
 
+const PAYMASTER_NETWORKS = {
+  "base-sepolia": "base-sepolia",
+  "base-mainnet": "base",
+};
+
 /**
  * Resolves CDP credentials from the supported environment variables only.
  *
@@ -74,8 +79,6 @@ function resolveCdpCredentials() {
 
 /**
  * Returns true when the agent should use a CDP Smart Wallet with Base Paymaster.
- *
- * @param {object|undefined} existingWalletData
  */
 function isBasePaymasterEnabled() {
   if (process.env.USE_EOA_WALLET === "1" || process.env.USE_EOA_WALLET === "true") {
@@ -105,7 +108,13 @@ async function resolveBasePaymasterUrl(credentials, networkId) {
     return explicitUrl;
   }
 
-  const paymasterNetwork = networkId === "base-mainnet" ? "base" : "base-sepolia";
+  const paymasterNetwork = PAYMASTER_NETWORKS[networkId];
+  if (!paymasterNetwork) {
+    throw new Error(
+      `Unsupported NETWORK_ID "${networkId}" for Base Paymaster. Set PAYMASTER_URL explicitly or use one of: ${Object.keys(PAYMASTER_NETWORKS).join(", ")}.`,
+    );
+  }
+
   const basePath = "https://api.cdp.coinbase.com";
   const jwt = await generateJwt({
     apiKeyId: credentials.apiKeyId,
@@ -134,7 +143,15 @@ async function resolveBasePaymasterUrl(credentials, networkId) {
  * @param {string} networkId
  */
 function resolveRpcUrl(networkId) {
-  return process.env.RPC_URL || DEFAULT_RPC_URLS[networkId];
+  const rpcUrl = process.env.RPC_URL || DEFAULT_RPC_URLS[networkId];
+
+  if (!rpcUrl) {
+    throw new Error(
+      `No RPC URL configured for NETWORK_ID "${networkId}". Set RPC_URL explicitly or use one of: ${Object.keys(DEFAULT_RPC_URLS).join(", ")}.`,
+    );
+  }
+
+  return rpcUrl;
 }
 
 /**
