@@ -99,7 +99,12 @@ function loadWalletData() {
     return undefined;
   }
 
-  return JSON.parse(fs.readFileSync(WALLET_DATA_PATH, "utf8"));
+  const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8");
+  if (!raw.trim()) {
+    return undefined;
+  }
+
+  return JSON.parse(raw);
 }
 
 /**
@@ -109,7 +114,7 @@ function loadWalletData() {
  */
 async function persistWallet(walletProvider) {
   const walletData = await walletProvider.exportWallet();
-  fs.writeFileSync(WALLET_DATA_PATH, JSON.stringify(walletData, null, 2));
+  fs.writeFileSync(WALLET_DATA_PATH, JSON.stringify(walletData, null, 2), { encoding: "utf8", mode: 0o600 });
   console.log(`Wallet state saved to ${WALLET_DATA_PATH}`);
 }
 
@@ -213,7 +218,9 @@ async function initializeAgent() {
   const tools = allTools.filter((tool) => focusedToolNames.has(tool.name));
 
   if (tools.length === 0) {
-    throw new Error("No focused tools were registered for the active wallet mode.");
+    throw new Error(
+      `No focused tools were registered for the active wallet mode. Expected one of: ${[...focusedToolNames].join(", ")}.`,
+    );
   }
 
   const llm = new ChatGoogleGenerativeAI({
@@ -307,7 +314,11 @@ async function runRepl(agent, agentConfig, walletProvider) {
     }
   } finally {
     rl.close();
-    await persistWallet(walletProvider);
+    try {
+      await persistWallet(walletProvider);
+    } catch (err) {
+      console.warn(`Warning: could not save wallet state: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }
 
