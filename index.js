@@ -53,16 +53,29 @@ function formatApiKeySecret(key) {
 }
 
 /**
+ * Resolves CDP API credentials from supported environment variable names.
+ *
+ * @returns {{ apiKeyId: string, apiKeySecret: string }}
+ */
+function getCdpCredentials() {
+  const apiKeyId = process.env.CDP_API_KEY || process.env.CDP_API_KEY_ID;
+  const apiKeySecret = process.env.CDP_PRIVATE_KEY || process.env.CDP_API_KEY_SECRET;
+
+  return { apiKeyId, apiKeySecret };
+}
+
+/**
  * Validates required environment variables.
  */
 function validateEnvironment() {
   const missing = [];
+  const { apiKeyId, apiKeySecret } = getCdpCredentials();
 
-  if (!process.env.CDP_API_KEY) {
-    missing.push("CDP_API_KEY");
+  if (!apiKeyId) {
+    missing.push("CDP_API_KEY or CDP_API_KEY_ID");
   }
-  if (!process.env.CDP_PRIVATE_KEY) {
-    missing.push("CDP_PRIVATE_KEY");
+  if (!apiKeySecret) {
+    missing.push("CDP_PRIVATE_KEY or CDP_API_KEY_SECRET");
   }
   if (!process.env.GEMINI_API_KEY) {
     missing.push("GEMINI_API_KEY");
@@ -105,10 +118,11 @@ async function persistWallet(walletProvider) {
 async function initializeAgent() {
   const existingWalletData = loadWalletData();
   const walletCreated = !existingWalletData;
-  const apiKeySecret = formatApiKeySecret(process.env.CDP_PRIVATE_KEY);
+  const { apiKeyId, apiKeySecret: rawApiKeySecret } = getCdpCredentials();
+  const apiKeySecret = formatApiKeySecret(rawApiKeySecret);
 
   const walletProvider = await LegacyCdpWalletProvider.configureWithWallet({
-    apiKeyId: process.env.CDP_API_KEY,
+    apiKeyId,
     apiKeySecret,
     networkId: NETWORK_ID,
     cdpWalletData: existingWalletData,
@@ -119,7 +133,7 @@ async function initializeAgent() {
   }
 
   const cdpConfig = {
-    apiKeyId: process.env.CDP_API_KEY,
+    apiKeyId,
     apiKeySecret,
   };
 

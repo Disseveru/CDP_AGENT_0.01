@@ -10,11 +10,11 @@ Node.js CLI agent using **Coinbase CDP AgentKit** (`@coinbase/agentkit`), **Lang
 
 | Variable | Purpose |
 |---|---|
-| `CDP_API_KEY` | CDP API key ID |
-| `CDP_PRIVATE_KEY` | CDP API key private key (EC PEM; may be injected as a single line) |
+| `CDP_API_KEY` or `CDP_API_KEY_ID` | CDP API key ID |
+| `CDP_PRIVATE_KEY` or `CDP_API_KEY_SECRET` | CDP API key private key (EC PEM; may be injected as a single line) |
 | `GEMINI_API_KEY` | Google Gemini API key |
 
-`CDP_WALLET_SECRET` is optional for this legacy wallet flow but may be required for newer CDP v2 wallet providers.
+`CDP_WALLET_SECRET` is optional for this legacy wallet flow but may be required for newer CDP v2 wallet providers. Cloud environments typically inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` / `CDP_WALLET_SECRET` names.
 
 ### Commands
 

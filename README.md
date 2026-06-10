@@ -10,8 +10,8 @@ npm install
 
 Set environment variables:
 
-- `CDP_API_KEY`
-- `CDP_PRIVATE_KEY`
+- `CDP_API_KEY` or `CDP_API_KEY_ID`
+- `CDP_PRIVATE_KEY` or `CDP_API_KEY_SECRET`
 - `GEMINI_API_KEY`
 
 ## Run
