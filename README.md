@@ -12,6 +12,7 @@ Set environment variables:
 
 - `CDP_API_KEY`
 - `CDP_PRIVATE_KEY`
+- `CDP_WALLET_SECRET`
 - `GEMINI_API_KEY`
 
 ## Run
