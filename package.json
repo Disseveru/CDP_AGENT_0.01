@@ -33,5 +33,11 @@
     "@langchain/langgraph-checkpoint": "^1.0.4",
     "dotenv": "^17.4.2",
     "langchain": "^1.4.4"
+  },
+  "overrides": {
+    "@privy-io/server-auth": "^1.32.5",
+    "langsmith": "^0.7.6",
+    "viem": "^2.52.2",
+    "ws": "^8.21.0"
   }
 }

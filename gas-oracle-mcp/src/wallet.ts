@@ -34,6 +34,7 @@ export function resolveCdpCredentials(): CdpCredentials {
   const rawSecret = process.env.CDP_PRIVATE_KEY || process.env.CDP_API_KEY_SECRET;
   const walletSecret = process.env.CDP_WALLET_SECRET;
 
+  if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
       "Missing CDP credentials. Set CDP_API_KEY (or CDP_API_KEY_ID), CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET), and CDP_WALLET_SECRET in .env",
     );
