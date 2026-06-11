@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AgentKit, CdpEvmWalletProvider, walletActionProvider } from "@coinbase/agentkit";
+import { isAddress } from "viem";
 
 import { CONFIG } from "./config.js";
 
@@ -35,7 +36,7 @@ export function resolveCdpCredentials(): CdpCredentials {
 
   if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
-      "Missing CDP credentials. Set CDP_API_KEY, CDP_PRIVATE_KEY, and CDP_WALLET_SECRET in .env",
+      "Missing CDP credentials. Set CDP_API_KEY (or CDP_API_KEY_ID), CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET), and CDP_WALLET_SECRET in .env",
     );
   }
 
@@ -62,7 +63,10 @@ export function resolveCdpCredentials(): CdpCredentials {
 function loadPersistedAddress(): `0x${string}` | undefined {
   try {
     const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8");
-    return JSON.parse(raw).address;
+    const parsed = JSON.parse(raw) as { address?: unknown };
+    return typeof parsed.address === "string" && isAddress(parsed.address)
+      ? (parsed.address as `0x${string}`)
+      : undefined;
   } catch {
     return undefined;
   }

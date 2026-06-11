@@ -2,7 +2,7 @@
 
 A paid MCP (Model Context Protocol) server that sells real-time cross-chain gas intelligence to autonomous AI agents for USDC micro-payments, using the **x402 payment protocol** and a **Coinbase CDP AgentKit** wallet as its on-chain identity.
 
-Every tool call is paywalled: when a buyer agent calls a tool, the server replies with an x402 `Payment Required` challenge, the buyer's wallet signs an EIP-3009 USDC authorization, the facilitator verifies and settles it on-chain, and only then is the data released. Revenue lands directly in your CDP wallet.
+Every paid tool call is paywalled: when a buyer agent calls a paid tool, the server replies with an x402 `Payment Required` challenge, the buyer's wallet signs an EIP-3009 USDC authorization, the facilitator verifies and settles it on-chain, and only then is the data released. Revenue lands directly in your CDP wallet.
 
 ## What it sells
 

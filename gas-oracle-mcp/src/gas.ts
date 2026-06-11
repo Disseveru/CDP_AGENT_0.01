@@ -50,6 +50,24 @@ export interface GasSnapshot {
 
 let cache: { at: number; snapshot: GasSnapshot } | null = null;
 const CACHE_TTL_MS = 5_000;
+const WEI_PER_ETH = 10n ** 18n;
+const USD_DECIMALS = 6;
+
+function roundDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator / 2n) / denominator;
+}
+
+function formatScaled(value: bigint, decimals: number): string {
+  const divisor = 10n ** BigInt(decimals);
+  const whole = value / divisor;
+  const fraction = (value % divisor).toString().padStart(decimals, "0");
+  return `${whole}.${fraction}`;
+}
+
+function formatWeiAsEth(value: bigint, decimals: number): string {
+  const scaled = roundDiv(value * 10n ** BigInt(decimals), WEI_PER_ETH);
+  return formatScaled(scaled, decimals);
+}
 
 async function fetchEthUsd(): Promise<number> {
   const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot");
@@ -138,24 +156,27 @@ export async function recommendCheapestChain(txType: string): Promise<Recommenda
   }
 
   const snapshot = await getGasSnapshot();
+  const ethUsdScaled = BigInt(Math.round(snapshot.ethUsd * 10 ** USD_DECIMALS));
 
-  const ranking = snapshot.chains
+  const rankedCosts = snapshot.chains
     .map((chain) => {
       const feeWei = BigInt(chain.maxFeePerGasWei) * gasUnits;
-      const feeEth = Number(feeWei) / 1e18;
+      const feeUsdScaled = roundDiv(feeWei * ethUsdScaled, WEI_PER_ETH);
       return {
         chain: chain.chain,
         label: chain.label,
         chainId: chain.chainId,
-        estimatedFeeEth: feeEth.toFixed(10),
-        estimatedFeeUsd: (feeEth * snapshot.ethUsd).toFixed(6),
+        estimatedFeeEth: formatWeiAsEth(feeWei, 10),
+        estimatedFeeUsd: formatScaled(feeUsdScaled, USD_DECIMALS),
+        feeUsdScaled,
         maxFeePerGasGwei: chain.maxFeePerGasGwei,
       };
     })
-    .sort((a, b) => Number(a.estimatedFeeUsd) - Number(b.estimatedFeeUsd));
+    .sort((a, b) => (a.feeUsdScaled < b.feeUsdScaled ? -1 : a.feeUsdScaled > b.feeUsdScaled ? 1 : 0));
 
-  const cheapest = ranking[0];
-  const mostExpensive = ranking[ranking.length - 1];
+  const cheapest = rankedCosts[0];
+  const mostExpensive = rankedCosts[rankedCosts.length - 1];
+  const ranking = rankedCosts.map(({ feeUsdScaled: _feeUsdScaled, ...chain }) => chain);
 
   return {
     timestamp: snapshot.timestamp,
@@ -164,6 +185,6 @@ export async function recommendCheapestChain(txType: string): Promise<Recommenda
     ethUsd: snapshot.ethUsd,
     cheapest,
     ranking,
-    maxSavingsUsd: (Number(mostExpensive.estimatedFeeUsd) - Number(cheapest.estimatedFeeUsd)).toFixed(6),
+    maxSavingsUsd: formatScaled(mostExpensive.feeUsdScaled - cheapest.feeUsdScaled, USD_DECIMALS),
   };
 }
