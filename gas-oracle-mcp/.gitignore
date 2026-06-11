@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+wallet_data.json
+.buyer_key
