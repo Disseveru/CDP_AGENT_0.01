@@ -21,9 +21,6 @@
     "url": "https://github.com/Disseveru/CDP_AGENT_0.01/issues"
   },
   "homepage": "https://github.com/Disseveru/CDP_AGENT_0.01#readme",
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
     "@coinbase/agentkit": "^0.10.4",
     "@coinbase/agentkit-langchain": "^0.3.0",
