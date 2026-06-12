@@ -1,5 +1,5 @@
 # Railway config when deploying from the monorepo root (default GitHub import).
-# The AgentWire MCP server lives in gas-oracle-mcp/.
+# The deployed MCP service is AgentWire; `gas-oracle-mcp/` is the legacy folder path.
 
 [build]
 buildCommand = "cd gas-oracle-mcp && npm install --legacy-peer-deps && npm run build"

@@ -5,7 +5,7 @@ Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (S
 | Path | What it is |
 |---|---|
 | `index.js` (root) | Interactive Node.js CLI agent powered by LangChain + Google Gemini. Mints NFTs, sends ETH, checks wallet details. Defaults to a CDP Smart Wallet with the Base Paymaster so transactions are gasless. |
-| `gas-oracle-mcp/` | Standalone TypeScript MCP server (**AgentWire**) that sells webhook inbox relay + web fetch to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. Agents use it to receive inbound events and read the web. |
+| `gas-oracle-mcp/` | Standalone TypeScript MCP server (**AgentWire**). The folder keeps a legacy name, but the deployed service/package is AgentWire / `agentwire-mcp`. It sells webhook inbox relay + web fetch to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. |
 
 Both projects share the same set of Coinbase CDP credentials.
 
@@ -88,7 +88,7 @@ If wallet init fails with `401`/`Unauthorized`, double-check your CDP credential
 
 ---
 
-## `gas-oracle-mcp/` — AgentWire (paid MCP server)
+## AgentWire (`gas-oracle-mcp/`) — paid MCP server
 
 Sells `drain_inbox` ($0.005), `peek_inbox` ($0.002), and `fetch_url` ($0.012) to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol. Free tools: `create_inbox`, `ping`. Webhooks arrive at `POST /hooks/{inboxId}`.
 
@@ -117,7 +117,7 @@ Change `NETWORK=base` in `.env` and restart. Payments will then settle in real U
 
 ### Deploy on Railway
 
-A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.toml`). Connect this GitHub repo, set the service **Root Directory** to `gas-oracle-mcp`, generate a public domain, and add your CDP env vars in the Railway dashboard. `PUBLIC_URL` is optional on Railway — the server auto-detects `RAILWAY_PUBLIC_DOMAIN`.
+A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.toml`). Connect this GitHub repo, set the service **Root Directory** to `gas-oracle-mcp`, and name the Railway service `AgentWire` if you want the dashboard label to match the app name. Generate a public domain and add your CDP env vars in the Railway dashboard. `PUBLIC_URL` is optional on Railway — the server auto-detects `RAILWAY_PUBLIC_DOMAIN`.
 
 See `gas-oracle-mcp/README.md` for step-by-step Railway setup and buyer-agent integration details.
 

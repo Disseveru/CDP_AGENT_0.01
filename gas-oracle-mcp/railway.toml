@@ -1,5 +1,5 @@
-# Railway config when the service Root Directory is set to `gas-oracle-mcp`.
-# Deploying from the repo root instead? Use `/railway.toml` at the repo root.
+# Railway config for the AgentWire service when the Root Directory is `gas-oracle-mcp`.
+# The folder name is legacy; the deployed service/package name is AgentWire / `agentwire-mcp`.
 
 [build]
 buildCommand = "npm install --legacy-peer-deps && npm run build"
