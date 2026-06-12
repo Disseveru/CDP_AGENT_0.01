@@ -1,109 +1,82 @@
-# ChainPulse Gas Oracle
+# AgentWire MCP
 
-A paid MCP (Model Context Protocol) server that sells real-time cross-chain gas intelligence to autonomous AI agents for USDC micro-payments, using the **x402 payment protocol** and a **Coinbase CDP AgentKit** wallet as its on-chain identity.
+**Webhook inbox + web fetch for autonomous AI agents.** Agents pay USDC via [x402](https://x402.org) to use infrastructure they cannot host themselves.
 
-Every paid tool call is paywalled: when a buyer agent calls a paid tool, the server replies with an x402 `Payment Required` challenge, the buyer's wallet signs an EIP-3009 USDC authorization, the facilitator verifies and settles it on-chain, and only then is the data released. Revenue lands directly in your CDP wallet.
+## Why agents pay for this repeatedly
 
-## What it sells
+| Problem | AgentWire solution |
+|---|---|
+| Agents can't receive inbound HTTP (Stripe, GitHub, human replies) | **Webhook inbox** — POST events in, `drain_inbox` pulls them into the agent loop |
+| Agents can't browse the web reliably | **`fetch_url`** — returns clean text + SHA-256 content hash from any public URL |
 
-| Tool | Price | What the buyer gets |
+This is real infrastructure, not a demo. Every agent loop that waits for external input will call `drain_inbox` over and over.
+
+## Tools
+
+| Tool | Price | What it does |
 |---|---|---|
-| `get_gas_snapshot` | $0.001 | Live EIP-1559 gas (max fee + priority fee) and latest block for Base, Ethereum, Arbitrum One, OP Mainnet + live ETH-USD rate |
-| `recommend_cheapest_chain` | $0.002 | Chains ranked by estimated USD cost for a transaction type (`transfer`, `erc20_transfer`, `swap`, `nft_mint`) with projected savings |
-| `ping` | free | Health check and price list |
+| `create_inbox` | **free** | Creates `{ inboxId, secret, webhookUrl }` |
+| `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
+| `peek_inbox` | $0.002 | Read events without clearing |
+| `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
+| `ping` | **free** | Health check |
 
-## Architecture
+## Deploy in 10 minutes (no coding — works from your phone)
 
-- `src/server.ts` - Express + MCP Streamable HTTP endpoint at `/mcp`; wraps each paid tool with the x402 payment wrapper
-- `src/wallet.ts` - Coinbase CDP AgentKit wallet (the `payTo` revenue address)
-- `src/payments.ts` - x402 resource server, facilitator client, and Bazaar v2 auto-discovery metadata (strictly schema-validated at boot)
-- `src/gas.ts` - multi-chain gas engine (viem public RPCs + Coinbase spot price API, 5s cache)
+### 1. Get CDP keys (one time)
 
-On testnet (`base-sepolia`) payments settle through the free `x402.org` facilitator. On mainnet (`base`) they settle through the **CDP Facilitator**, which also indexes the service into the **x402 Bazaar / Agentic.Market** catalog automatically after the first successful settlement (the x402 v2 payment payload carries `paymentPayload.resource` for every tool, which is what the facilitator uses to catalog it).
+1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) on your phone browser
+2. Create an **API key** → copy **API key ID** + **secret**
+3. Go to **Wallet Secret** → create and copy it
 
-## Deployment (zero coding required)
+### 2. Deploy on Railway (free tier works for testing)
 
-### Step 1 - Get your 3 Coinbase keys
-
-1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) and sign in
-2. Create an **API key**: copy the **API key ID** and the **API key secret**
-3. Go to **Wallet Secret** in settings and create/copy your **wallet secret**
-
-### Step 2 - Install and configure
-
-From the repository root, run this single command:
-
-```bash
-cd gas-oracle-mcp && npm install --legacy-peer-deps && cp .env.example .env
-```
-
-Then open `.env` in the editor and paste your 3 keys into `CDP_API_KEY`, `CDP_PRIVATE_KEY`, and `CDP_WALLET_SECRET`. Leave everything else as-is.
-
-### Step 3 - Start the server
-
-```bash
-npm start
-```
-
-You will see your revenue wallet address printed (`Revenue wallet (payTo): 0x...`). That is where every micro-payment lands.
-
-### Step 4 - Verify it works (still zero coding)
-
-In a second terminal:
-
-```bash
-cd gas-oracle-mcp && npm run smoke-test
-```
-
-This connects as an agent, lists the tools, calls the free `ping`, and confirms unpaid calls are challenged with a valid x402 envelope and Bazaar discovery metadata.
-
-To prove the full payment loop with real testnet USDC (auto-funded from the CDP faucet):
-
-```bash
-npm run paid-test
-```
-
-It prints two Basescan links to the settled on-chain payments into your wallet.
-
-### Step 5 - Go live on mainnet
-
-When you are ready to earn real USDC, change one line in `.env`:
-
-```
-NETWORK=base
-```
-
-Restart with `npm start`. Payments now settle in real USDC via the CDP Facilitator, and after the first sale your service is automatically indexed in the x402 Bazaar where buyer agents discover it.
-
-### Step 6 - Host it 24/7 on Railway
-
-This repo includes `railway.toml` with the build, start, and health-check commands preconfigured.
-
-1. Go to [railway.com](https://railway.com) and create a project from this GitHub repo.
-2. Open the service **Settings** and set **Root Directory** to `gas-oracle-mcp`.
-3. Under **Config-as-code**, set the config file path to `/gas-oracle-mcp/railway.toml` (absolute from repo root).
+1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
+2. Select this repo
+3. Open service **Settings**:
+   - **Root Directory**: `gas-oracle-mcp`
+   - **Config file**: `/gas-oracle-mcp/railway.toml`
 4. Open **Variables** and add:
-   - `CDP_API_KEY`
-   - `CDP_PRIVATE_KEY`
+   - `CDP_API_KEY` (API key ID)
+   - `CDP_PRIVATE_KEY` (API key secret / PEM)
    - `CDP_WALLET_SECRET`
-   - `NETWORK` — `base-sepolia` for testnet, `base` for mainnet
-   - Optional: `PRICE_GAS_SNAPSHOT`, `PRICE_RECOMMEND`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`
-5. Open **Networking** and click **Generate Domain** to assign a public URL.
-6. Deploy. `PUBLIC_URL` is optional — when unset, the server uses Railway's `RAILWAY_PUBLIC_DOMAIN` automatically.
+   - `NETWORK` = `base-sepolia` (testnet) or `base` (real money)
+5. **Networking** → **Generate Domain**
+6. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`
 
-After deploy, verify from your machine (replace the host with your Railway domain):
+Your public URLs:
+- MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
+- Webhooks: `https://YOUR-DOMAIN.up.railway.app/hooks/{inboxId}`
 
-```bash
-curl https://your-app.up.railway.app/health
-cd gas-oracle-mcp && SERVER_URL=https://your-app.up.railway.app/mcp npm run smoke-test
+### 3. Go live on mainnet (real USDC)
+
+Change `NETWORK=base` in Railway variables and redeploy. After the first paid call, your service auto-lists in the **x402 Bazaar** where buyer agents discover it.
+
+## How it works (agent workflow)
+
+```
+1. Agent calls create_inbox (free)
+   → gets webhookUrl like https://your-app.up.railway.app/hooks/abc123
+
+2. You configure Stripe/GitHub/a form to POST to that URL
+
+3. Agent loop calls drain_inbox (paid, $0.005)
+   → receives all pending events as JSON
+
+4. Agent calls fetch_url (paid, $0.012) when it needs web content
 ```
 
-Health check path: `/health` (configured in `railway.toml`).
+## Test locally (if you have a laptop later)
 
-## How buyer agents connect
+```bash
+cd gas-oracle-mcp
+npm install --legacy-peer-deps
+cp .env.example .env   # paste your 3 CDP keys
+npm start
+npm run smoke-test     # free
+npm run paid-test      # settles real testnet USDC
+```
 
-Buyers point any MCP client at `POST /mcp` (Streamable HTTP) and wrap it with an x402 payment client, e.g. `@x402/mcp`'s `wrapMCPClientWithPayment`. See `scripts/paid-client-test.ts` for a complete working buyer implementation.
+## Revenue
 
-## Environment variables
-
-See `.env.example` for the full annotated list.
+Every paid tool call settles USDC to your CDP wallet (`payTo` address printed on boot). On testnet it's fake USDC; on mainnet it's real.

@@ -30,7 +30,7 @@ Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 
 ### Subprojects
 
-- `gas-oracle-mcp/`: ChainPulse Gas Oracle, an x402-paid MCP server (TypeScript) that sells cross-chain gas data for USDC micro-payments using a CDP AgentKit wallet. Install with `npm install --legacy-peer-deps` (plain `npm install` can hang resolving the AgentKit dependency graph). Run with `npm start`, verify with `npm run smoke-test` (free) and `npm run paid-test` (settles real testnet USDC payments via the x402.org facilitator; auto-funds a local buyer wallet from the CDP faucet). Uses the same CDP env vars as the root project.
+- `gas-oracle-mcp/`: AgentWire MCP, an x402-paid MCP server (TypeScript) that sells webhook inbox relay + real web fetch for autonomous agents (USDC micro-payments via a CDP AgentKit wallet). Install with `npm install --legacy-peer-deps` (plain `npm install` can hang resolving the AgentKit dependency graph). Run with `npm start`, verify with `npm run smoke-test` (free) and `npm run paid-test` (settles real testnet USDC payments via the x402.org facilitator; auto-funds a local buyer wallet from the CDP faucet). Uses the same CDP env vars as the root project.
 
 ### Runtime notes
 

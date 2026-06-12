@@ -1,4 +1,4 @@
-# Railway config for ChainPulse Gas Oracle.
+# Railway config for AgentWire MCP.
 # In the Railway dashboard, set Root Directory to `gas-oracle-mcp` and point the
 # config file to `/gas-oracle-mcp/railway.toml` (absolute from repo root).
 

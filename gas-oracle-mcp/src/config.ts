@@ -47,9 +47,10 @@ export const CONFIG = {
   publicUrl: resolvePublicUrl(),
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {
-    gasSnapshot: process.env.PRICE_GAS_SNAPSHOT || "$0.001",
-    recommend: process.env.PRICE_RECOMMEND || "$0.002",
+    drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",
+    peekInbox: process.env.PRICE_PEEK_INBOX || "$0.002",
+    fetchUrl: process.env.PRICE_FETCH_URL || "$0.012",
   },
-  serviceName: "ChainPulse Gas Oracle",
+  serviceName: "AgentWire",
   serviceVersion: "1.0.0",
 } as const;
