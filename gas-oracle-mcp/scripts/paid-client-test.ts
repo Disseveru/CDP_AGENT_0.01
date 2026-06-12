@@ -1,11 +1,8 @@
 /**
  * Full end-to-end paid test on Base Sepolia.
  *
- * Plays the role of an autonomous buyer agent:
- *  1. Generates (or reuses) a local buyer wallet (.buyer_key, gitignored)
- *  2. Tops it up with testnet USDC from the CDP faucet when empty
- *  3. Calls the paid tools - the x402 client auto-signs the EIP-3009 payment,
- *     the server verifies + settles it on-chain, then releases the payload
+ * Plays the role of an autonomous buyer agent that preflights transactions
+ * before signing — the core repeat-use case for this service.
  *
  * Usage: npm run paid-test  (server must be running with NETWORK=base-sepolia)
  */
@@ -79,6 +76,19 @@ async function getFundedBuyer() {
     console.log(`[buyer] Faucet tx: ${txHash}`);
     await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
     console.log("[buyer] Faucet confirmed");
+    for (let i = 0; i < 10; i++) {
+      const refreshed = await publicClient.readContract({
+        address: USDC_BASE_SEPOLIA,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [buyer.address],
+      });
+      if (refreshed >= 10_000n) {
+        console.log(`[buyer] USDC balance after faucet: ${Number(refreshed) / 1e6}`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 
   return buyer;
@@ -103,32 +113,50 @@ async function main(): Promise<void> {
 
   await x402Mcp.connect(new StreamableHTTPClientTransport(new URL(SERVER_URL)));
 
-  console.log("\n=== Paid call 1: get_gas_snapshot ===");
-  const snapshot = await x402Mcp.callTool("get_gas_snapshot", {}, { timeout: 180_000 });
-  console.log(`paymentMade=${snapshot.paymentMade} settlementTx=${snapshot.paymentResponse?.transaction}`);
-  console.log((snapshot.content[0] as { text: string }).text);
-  if (!snapshot.paymentMade || !snapshot.paymentResponse?.success) {
-    throw new Error("Payment for get_gas_snapshot did not settle");
+  const burn = "0x000000000000000000000000000000000000dEaD";
+
+  console.log("\n=== Paid call 1: simulate_transaction (0-value call) ===");
+  const txSim = await x402Mcp.callTool(
+    "simulate_transaction",
+    {
+      chain: "base-sepolia",
+      from: buyer.address,
+      to: USDC_BASE_SEPOLIA,
+      data: "0x",
+      value: "0",
+    },
+    { timeout: 180_000 },
+  );
+  console.log(`paymentMade=${txSim.paymentMade} settlementTx=${txSim.paymentResponse?.transaction}`);
+  console.log((txSim.content[0] as { text: string }).text);
+  if (!txSim.paymentMade || !txSim.paymentResponse?.success) {
+    throw new Error("Payment for simulate_transaction did not settle");
   }
 
-  console.log("\n=== Paid call 2: recommend_cheapest_chain (swap) ===");
-  const recommendation = await x402Mcp.callTool(
-    "recommend_cheapest_chain",
-    { txType: "swap" },
+  console.log("\n=== Paid call 2: simulate_erc20_transfer (preflight USDC send) ===");
+  const tokenSim = await x402Mcp.callTool(
+    "simulate_erc20_transfer",
+    {
+      chain: "base-sepolia",
+      token: USDC_BASE_SEPOLIA,
+      from: buyer.address,
+      to: burn,
+      amount: "0.001",
+    },
     { timeout: 180_000 },
   );
   console.log(
-    `paymentMade=${recommendation.paymentMade} settlementTx=${recommendation.paymentResponse?.transaction}`,
+    `paymentMade=${tokenSim.paymentMade} settlementTx=${tokenSim.paymentResponse?.transaction}`,
   );
-  console.log((recommendation.content[0] as { text: string }).text);
-  if (!recommendation.paymentMade || !recommendation.paymentResponse?.success) {
-    throw new Error("Payment for recommend_cheapest_chain did not settle");
+  console.log((tokenSim.content[0] as { text: string }).text);
+  if (!tokenSim.paymentMade || !tokenSim.paymentResponse?.success) {
+    throw new Error("Payment for simulate_erc20_transfer did not settle");
   }
 
   await x402Mcp.close();
   console.log("\nPAID E2E TEST PASSED - two settled on-chain micro-payments:");
-  console.log(`  1. https://sepolia.basescan.org/tx/${snapshot.paymentResponse.transaction}`);
-  console.log(`  2. https://sepolia.basescan.org/tx/${recommendation.paymentResponse.transaction}`);
+  console.log(`  1. https://sepolia.basescan.org/tx/${txSim.paymentResponse.transaction}`);
+  console.log(`  2. https://sepolia.basescan.org/tx/${tokenSim.paymentResponse.transaction}`);
 }
 
 main().catch((error) => {

@@ -1,7 +1,7 @@
 {
-  "name": "chainpulse-gas-oracle-mcp",
-  "version": "1.0.0",
-  "description": "ChainPulse: x402-paid MCP gas-optimization oracle powered by Coinbase CDP AgentKit. Sells real-time cross-chain gas intelligence to autonomous agents for USDC micro-payments.",
+  "name": "chainpulse-preflight-mcp",
+  "version": "2.0.0",
+  "description": "ChainPulse Preflight: x402-paid MCP transaction simulation service. Agents pay USDC to dry-run transactions and ERC-20 transfers before signing, avoiding reverts and wasted gas.",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

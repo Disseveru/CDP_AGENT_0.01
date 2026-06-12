@@ -1,109 +1,64 @@
-# ChainPulse Gas Oracle
+# ChainPulse Preflight
 
-A paid MCP (Model Context Protocol) server that sells real-time cross-chain gas intelligence to autonomous AI agents for USDC micro-payments, using the **x402 payment protocol** and a **Coinbase CDP AgentKit** wallet as its on-chain identity.
+A paid MCP server that **simulates EVM transactions before agents sign them**. Autonomous agents pay USDC micro-payments via **x402** to dry-run calls against live chain state — avoiding reverts, wasted gas, and bad token transfers.
 
-Every paid tool call is paywalled: when a buyer agent calls a paid tool, the server replies with an x402 `Payment Required` challenge, the buyer's wallet signs an EIP-3009 USDC authorization, the facilitator verifies and settles it on-chain, and only then is the data released. Revenue lands directly in your CDP wallet.
+**Why agents pay repeatedly:** every on-chain action should be preflighted. One failed mainnet transaction can cost far more than $0.01 in gas. Agents call `simulate_transaction` before swaps, mints, and contract calls, and `simulate_erc20_transfer` before every token send.
 
 ## What it sells
 
 | Tool | Price | What the buyer gets |
 |---|---|---|
-| `get_gas_snapshot` | $0.001 | Live EIP-1559 gas (max fee + priority fee) and latest block for Base, Ethereum, Arbitrum One, OP Mainnet + live ETH-USD rate |
-| `recommend_cheapest_chain` | $0.002 | Chains ranked by estimated USD cost for a transaction type (`transfer`, `erc20_transfer`, `swap`, `nft_mint`) with projected savings |
+| `simulate_transaction` | $0.01 | Dry-run any tx (from, to, calldata, value). Returns `willSucceed`, exact gas estimate, revert reason, balance warnings. |
+| `simulate_erc20_transfer` | $0.008 | Dry-run an ERC-20 `transfer()` with balance checks and revert decoding (honeypots, pauses, blacklists). |
 | `ping` | free | Health check and price list |
+
+Supported chains: **Base**, **Base Sepolia**, **Ethereum**, **Arbitrum**, **Optimism**.
 
 ## Architecture
 
-- `src/server.ts` - Express + MCP Streamable HTTP endpoint at `/mcp`; wraps each paid tool with the x402 payment wrapper
-- `src/wallet.ts` - Coinbase CDP AgentKit wallet (the `payTo` revenue address)
-- `src/payments.ts` - x402 resource server, facilitator client, and Bazaar v2 auto-discovery metadata (strictly schema-validated at boot)
-- `src/gas.ts` - multi-chain gas engine (viem public RPCs + Coinbase spot price API, 5s cache)
+- `src/server.ts` — Express + MCP Streamable HTTP at `/mcp`; x402 payment wrapper per tool
+- `src/preflight.ts` — simulation engine (viem `eth_call`, `estimateGas`, `simulateContract`)
+- `src/wallet.ts` — CDP AgentKit revenue wallet (`payTo`)
+- `src/payments.ts` — x402 facilitator + Bazaar v2 discovery metadata
 
-On testnet (`base-sepolia`) payments settle through the free `x402.org` facilitator. On mainnet (`base`) they settle through the **CDP Facilitator**, which also indexes the service into the **x402 Bazaar / Agentic.Market** catalog automatically after the first successful settlement (the x402 v2 payment payload carries `paymentPayload.resource` for every tool, which is what the facilitator uses to catalog it).
+On testnet (`base-sepolia`) payments settle via the free `x402.org` facilitator. On mainnet (`base`) they settle via the **CDP Facilitator** and auto-index into the **x402 Bazaar** after the first sale.
 
-## Deployment (zero coding required)
-
-### Step 1 - Get your 3 Coinbase keys
-
-1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) and sign in
-2. Create an **API key**: copy the **API key ID** and the **API key secret**
-3. Go to **Wallet Secret** in settings and create/copy your **wallet secret**
-
-### Step 2 - Install and configure
-
-From the repository root, run this single command:
+## Quick start
 
 ```bash
-cd gas-oracle-mcp && npm install --legacy-peer-deps && cp .env.example .env
-```
-
-Then open `.env` in the editor and paste your 3 keys into `CDP_API_KEY`, `CDP_PRIVATE_KEY`, and `CDP_WALLET_SECRET`. Leave everything else as-is.
-
-### Step 3 - Start the server
-
-```bash
+cd gas-oracle-mcp
+npm install --legacy-peer-deps
+cp .env.example .env    # paste CDP_API_KEY, CDP_PRIVATE_KEY, CDP_WALLET_SECRET
 npm start
 ```
 
-You will see your revenue wallet address printed (`Revenue wallet (payTo): 0x...`). That is where every micro-payment lands.
+The server prints your **revenue wallet** (`payTo`) on boot.
 
-### Step 4 - Verify it works (still zero coding)
-
-In a second terminal:
+### Test
 
 ```bash
-cd gas-oracle-mcp && npm run smoke-test
+npm run smoke-test     # free: tool listing + 402 challenge + Bazaar metadata
+npm run paid-test      # E2E: two real testnet USDC settlements
 ```
 
-This connects as an agent, lists the tools, calls the free `ping`, and confirms unpaid calls are challenged with a valid x402 envelope and Bazaar discovery metadata.
+### Go live on mainnet
 
-To prove the full payment loop with real testnet USDC (auto-funded from the CDP faucet):
+Set `NETWORK=base` in `.env` and restart. Payments settle in real USDC.
 
-```bash
-npm run paid-test
-```
+### Deploy on Railway
 
-It prints two Basescan links to the settled on-chain payments into your wallet.
-
-### Step 5 - Go live on mainnet
-
-When you are ready to earn real USDC, change one line in `.env`:
-
-```
-NETWORK=base
-```
-
-Restart with `npm start`. Payments now settle in real USDC via the CDP Facilitator, and after the first sale your service is automatically indexed in the x402 Bazaar where buyer agents discover it.
-
-### Step 6 - Host it 24/7 on Railway
-
-This repo includes `railway.toml` with the build, start, and health-check commands preconfigured.
-
-1. Go to [railway.com](https://railway.com) and create a project from this GitHub repo.
-2. Open the service **Settings** and set **Root Directory** to `gas-oracle-mcp`.
-3. Under **Config-as-code**, set the config file path to `/gas-oracle-mcp/railway.toml` (absolute from repo root).
-4. Open **Variables** and add:
-   - `CDP_API_KEY`
-   - `CDP_PRIVATE_KEY`
-   - `CDP_WALLET_SECRET`
-   - `NETWORK` — `base-sepolia` for testnet, `base` for mainnet
-   - Optional: `PRICE_GAS_SNAPSHOT`, `PRICE_RECOMMEND`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`
-5. Open **Networking** and click **Generate Domain** to assign a public URL.
-6. Deploy. `PUBLIC_URL` is optional — when unset, the server uses Railway's `RAILWAY_PUBLIC_DOMAIN` automatically.
-
-After deploy, verify from your machine (replace the host with your Railway domain):
-
-```bash
-curl https://your-app.up.railway.app/health
-cd gas-oracle-mcp && SERVER_URL=https://your-app.up.railway.app/mcp npm run smoke-test
-```
-
-Health check path: `/health` (configured in `railway.toml`).
+Set **Root Directory** to `gas-oracle-mcp`, config file to `/gas-oracle-mcp/railway.toml`, add CDP env vars, generate a public domain.
 
 ## How buyer agents connect
 
-Buyers point any MCP client at `POST /mcp` (Streamable HTTP) and wrap it with an x402 payment client, e.g. `@x402/mcp`'s `wrapMCPClientWithPayment`. See `scripts/paid-client-test.ts` for a complete working buyer implementation.
+Point an MCP client at `POST /mcp` and wrap with `@x402/mcp`'s `wrapMCPClientWithPayment`. See `scripts/paid-client-test.ts` for a working buyer.
+
+Typical agent loop:
+
+1. Build unsigned transaction
+2. Call `simulate_transaction` → if `willSucceed`, proceed; else adjust params
+3. Sign and broadcast only after preflight passes
 
 ## Environment variables
 
-See `.env.example` for the full annotated list.
+See `.env.example` for the full list.

@@ -1,8 +1,8 @@
 /**
- * ChainPulse Gas Oracle - x402-paid MCP server.
+ * ChainPulse Preflight - x402-paid MCP server.
  *
- * Autonomous agents connect over Streamable HTTP, discover the tools, and pay
- * USDC micro-payments (x402 "exact" scheme) per call. Revenue lands in the
+ * Autonomous agents call these tools before signing or broadcasting transactions
+ * to avoid reverts, wasted gas, and failed token transfers. Revenue lands in the
  * CDP AgentKit server wallet initialized at boot.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -14,9 +14,15 @@ import express from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
-import { getGasSnapshot, recommendCheapestChain, TX_TYPES } from "./gas.js";
+import {
+  simulateErc20Transfer,
+  simulateTransaction,
+  SUPPORTED_CHAINS,
+} from "./preflight.js";
 import { buildAccepts, buildDiscoveryExtension, createResourceServer } from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
+
+const chainEnum = z.enum([...SUPPORTED_CHAINS] as [string, ...string[]]);
 
 interface PaidToolDefinition {
   name: string;
@@ -31,63 +37,101 @@ interface PaidToolDefinition {
 
 const TOOL_DEFINITIONS: PaidToolDefinition[] = [
   {
-    name: "get_gas_snapshot",
+    name: "simulate_transaction",
     description:
-      `Real-time EIP-1559 gas prices (max fee + priority fee in gwei) and latest block for Base, Ethereum, Arbitrum One, and OP Mainnet, plus the live ETH-USD rate. Refreshed every 5 seconds. Costs ${CONFIG.prices.gasSnapshot} USDC per call.`,
-    price: CONFIG.prices.gasSnapshot,
-    zodShape: {},
-    jsonSchema: { type: "object", properties: {}, required: [] },
-    example: {},
-    outputExample: {
-      timestamp: "2026-06-10T12:00:00.000Z",
-      ethUsd: 2500.12,
-      chains: [
-        {
-          chain: "base",
-          label: "Base",
-          chainId: 8453,
-          maxFeePerGasWei: "5000000",
-          maxFeePerGasGwei: "0.005",
-          maxPriorityFeePerGasGwei: "0.001",
-          blockNumber: "31000000",
-        },
-      ],
-      errors: {},
-    },
-    handler: async () => getGasSnapshot(),
-  },
-  {
-    name: "recommend_cheapest_chain",
-    description:
-      `Ranks Base, Ethereum, Arbitrum One, and OP Mainnet by estimated USD execution cost for a transaction type (${TX_TYPES.join(", ")}) and recommends the cheapest chain with projected savings. Costs ${CONFIG.prices.recommend} USDC per call.`,
-    price: CONFIG.prices.recommend,
+      `Dry-run any EVM transaction against live chain state before signing. Returns willSucceed, exact gas estimate, decoded revert reason, and balance warnings. Supports ${SUPPORTED_CHAINS.join(", ")}. Costs ${CONFIG.prices.simulateTransaction} USDC per call. Call this before every on-chain action.`,
+    price: CONFIG.prices.simulateTransaction,
     zodShape: {
-      txType: z
-        .enum(TX_TYPES as [string, ...string[]])
-        .describe(`Transaction archetype to estimate. One of: ${TX_TYPES.join(", ")}`),
+      chain: chainEnum.describe(`Chain to simulate on. One of: ${SUPPORTED_CHAINS.join(", ")}`),
+      from: z.string().describe("Sender address (0x...)"),
+      to: z.string().describe("Target contract or recipient (0x...)"),
+      data: z
+        .string()
+        .optional()
+        .describe("Calldata hex (0x...). Omit or use 0x for plain ETH transfers."),
+      value: z
+        .string()
+        .optional()
+        .describe("Value in wei as a decimal string. Defaults to 0."),
     },
     jsonSchema: {
       type: "object",
       properties: {
-        txType: {
-          type: "string",
-          enum: TX_TYPES,
-          description: `Transaction archetype to estimate. One of: ${TX_TYPES.join(", ")}`,
-        },
+        chain: { type: "string", enum: [...SUPPORTED_CHAINS] },
+        from: { type: "string", description: "Sender address" },
+        to: { type: "string", description: "Target address" },
+        data: { type: "string", description: "Calldata hex" },
+        value: { type: "string", description: "Value in wei" },
       },
-      required: ["txType"],
+      required: ["chain", "from", "to"],
     },
-    example: { txType: "swap" },
+    example: {
+      chain: "base-sepolia",
+      from: "0x0000000000000000000000000000000000000001",
+      to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      data: "0x",
+      value: "0",
+    },
     outputExample: {
-      timestamp: "2026-06-10T12:00:00.000Z",
-      txType: "swap",
-      gasUnits: "200000",
-      ethUsd: 2500.12,
-      cheapest: { chain: "base", label: "Base", estimatedFeeUsd: "0.002500" },
-      ranking: [],
-      maxSavingsUsd: "4.812000",
+      willSucceed: true,
+      gasEstimate: "65000",
+      estimatedFeeEth: "0.000325",
+      revertReason: null,
+      warnings: [],
     },
-    handler: async (args) => recommendCheapestChain(String(args.txType)),
+    handler: async (args) =>
+      simulateTransaction({
+        chain: String(args.chain) as (typeof SUPPORTED_CHAINS)[number],
+        from: String(args.from),
+        to: String(args.to),
+        data: args.data != null ? String(args.data) : undefined,
+        value: args.value != null ? String(args.value) : undefined,
+      }),
+  },
+  {
+    name: "simulate_erc20_transfer",
+    description:
+      `Dry-run an ERC-20 transfer before signing. Checks token balance, simulates transfer() on live state, and returns revert reasons for honeypots, pauses, or blacklists. Supports ${SUPPORTED_CHAINS.join(", ")}. Costs ${CONFIG.prices.simulateErc20Transfer} USDC per call.`,
+    price: CONFIG.prices.simulateErc20Transfer,
+    zodShape: {
+      chain: chainEnum.describe(`Chain to simulate on. One of: ${SUPPORTED_CHAINS.join(", ")}`),
+      token: z.string().describe("ERC-20 token contract address (0x...)"),
+      from: z.string().describe("Sender/token holder address (0x...)"),
+      to: z.string().describe("Recipient address (0x...)"),
+      amount: z.string().describe('Human-readable amount, e.g. "10.5" (uses token decimals)'),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        chain: { type: "string", enum: [...SUPPORTED_CHAINS] },
+        token: { type: "string" },
+        from: { type: "string" },
+        to: { type: "string" },
+        amount: { type: "string" },
+      },
+      required: ["chain", "token", "from", "to", "amount"],
+    },
+    example: {
+      chain: "base-sepolia",
+      token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      from: "0x0000000000000000000000000000000000000001",
+      to: "0x0000000000000000000000000000000000000002",
+      amount: "1.0",
+    },
+    outputExample: {
+      willSucceed: false,
+      symbol: "USDC",
+      revertReason: "ERC20: transfer amount exceeds balance",
+      warnings: ["Insufficient USDC balance: have 0.0, need 1.0."],
+    },
+    handler: async (args) =>
+      simulateErc20Transfer({
+        chain: String(args.chain) as (typeof SUPPORTED_CHAINS)[number],
+        token: String(args.token),
+        from: String(args.from),
+        to: String(args.to),
+        amount: String(args.amount),
+      }),
   },
 ];
 
@@ -97,10 +141,6 @@ interface PreparedTool {
   extensions: Record<string, unknown>;
 }
 
-/**
- * Pre-computes payment requirements and validated Bazaar discovery metadata
- * for every paid tool. Done once at boot, reused for every request.
- */
 async function prepareTools(
   resourceServer: x402ResourceServer,
   payTo: string,
@@ -120,10 +160,6 @@ async function prepareTools(
   );
 }
 
-/**
- * Builds a fresh McpServer wired with the x402 payment wrapper around every
- * paid tool. A new instance is created per request (stateless transport).
- */
 function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[]): McpServer {
   const mcpServer = new McpServer({
     name: CONFIG.serviceName,
@@ -138,7 +174,7 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
         description: definition.description,
         mimeType: "application/json",
         serviceName: CONFIG.serviceName,
-        tags: ["gas", "fees", "cross-chain", "oracle", "optimization"],
+        tags: ["preflight", "simulation", "evm", "safety", "transaction"],
       },
       extensions,
       hooks: {
@@ -164,7 +200,6 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
     );
   }
 
-  // Free health-check tool so agents can probe the server without paying.
   mcpServer.tool("ping", "Free health check. Returns service status and payment metadata.", {}, async () => ({
     content: [
       {
@@ -192,7 +227,6 @@ async function main(): Promise<void> {
   const app = express();
   app.use(express.json());
 
-  // MCP endpoint (stateless Streamable HTTP): new server + transport per request.
   app.post("/mcp", async (req, res) => {
     try {
       const mcpServer = buildMcpServer(resourceServer, tools);
@@ -223,7 +257,6 @@ async function main(): Promise<void> {
     });
   });
 
-  // Human/agent-readable service card.
   app.get("/", (_req, res) => {
     res.json({
       service: CONFIG.serviceName,
@@ -245,7 +278,7 @@ async function main(): Promise<void> {
   });
 
   app.listen(CONFIG.port, () => {
-    console.log(`[boot] ChainPulse listening on port ${CONFIG.port}`);
+    console.log(`[boot] ChainPulse Preflight listening on port ${CONFIG.port}`);
     console.log(`[boot] MCP endpoint:  ${CONFIG.publicUrl}/mcp`);
     console.log(`[boot] Revenue wallet (payTo): ${identity.address}`);
     console.log(`[boot] Paid tools: ${tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`);

@@ -1,11 +1,7 @@
 /**
  * Free smoke test (no payment needed).
  *
- * Verifies that the server:
- *  1. Lists all tools with valid JSON schemas
- *  2. Serves the free `ping` tool
- *  3. Challenges unpaid calls to paid tools with a proper x402 PaymentRequired
- *     envelope carrying Bazaar discovery extensions that pass strict validation
+ * Verifies tool listing, free ping, and x402 challenge on unpaid paid-tool calls.
  *
  * Usage: npm run smoke-test  (server must be running)
  */
@@ -32,13 +28,17 @@ async function main(): Promise<void> {
   console.log((ping.content as Array<{ text: string }>)[0].text);
 
   console.log("\n=== 3. Unpaid call to paid tool -> expect x402 challenge ===");
-  // Per the x402 MCP transport spec, the 402 challenge may arrive either as a
-  // JSON-RPC error or as a structured tool result carrying PaymentRequired.
   let paymentRequired: Record<string, unknown> | null = null;
   try {
     const result = await client.callTool({
-      name: "recommend_cheapest_chain",
-      arguments: { txType: "swap" },
+      name: "simulate_transaction",
+      arguments: {
+        chain: "base-sepolia",
+        from: "0x0000000000000000000000000000000000000001",
+        to: "0x0000000000000000000000000000000000000002",
+        data: "0x",
+        value: "0",
+      },
     });
     const structured = result.structuredContent as Record<string, unknown> | undefined;
     if (structured && Array.isArray(structured.accepts)) {
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     );
 
     const resourceUrl = (paymentRequired as { resource?: { url?: string } }).resource?.url;
-    if (resourceUrl !== "mcp://tool/recommend_cheapest_chain") {
+    if (resourceUrl !== "mcp://tool/simulate_transaction") {
       throw new Error(`Unexpected resource url: ${resourceUrl}`);
     }
     console.log(`Resource URL OK: ${resourceUrl}`);

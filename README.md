@@ -5,7 +5,7 @@ Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (S
 | Path | What it is |
 |---|---|
 | `index.js` (root) | Interactive Node.js CLI agent powered by LangChain + Google Gemini. Mints NFTs, sends ETH, checks wallet details. Defaults to a CDP Smart Wallet with the Base Paymaster so transactions are gasless. |
-| `gas-oracle-mcp/` | Standalone TypeScript MCP server (ChainPulse Gas Oracle) that sells cross-chain gas intelligence to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. |
+| `gas-oracle-mcp/` | Standalone TypeScript MCP server (ChainPulse Preflight) that sells EVM transaction simulation to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. Agents dry-run txs before signing to avoid reverts and wasted gas. |
 
 Both projects share the same set of Coinbase CDP credentials.
 
@@ -47,7 +47,7 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 
 ### Optional (`gas-oracle-mcp/`)
 
-See `gas-oracle-mcp/.env.example` for the annotated list: `NETWORK`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`, `PRICE_GAS_SNAPSHOT`, `PRICE_RECOMMEND`, `PORT`, `PUBLIC_URL`.
+See `gas-oracle-mcp/.env.example` for the annotated list: `NETWORK`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`, `PRICE_SIMULATE_TX`, `PRICE_SIMULATE_ERC20`, `PORT`, `PUBLIC_URL`.
 
 ---
 
@@ -88,9 +88,9 @@ If wallet init fails with `401`/`Unauthorized`, double-check your CDP credential
 
 ---
 
-## `gas-oracle-mcp/` — paid MCP server
+## `gas-oracle-mcp/` — ChainPulse Preflight (paid MCP server)
 
-Sells `get_gas_snapshot` ($0.001) and `recommend_cheapest_chain` ($0.002) to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol. Includes a free `ping` health-check.
+Sells `simulate_transaction` ($0.01) and `simulate_erc20_transfer` ($0.008) to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol. Agents call these before every on-chain action to avoid reverts. Includes a free `ping` health-check.
 
 ### Install and run
 

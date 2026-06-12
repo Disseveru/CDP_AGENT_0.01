@@ -1,5 +1,5 @@
 /**
- * On-chain identity for the oracle, managed with Coinbase CDP AgentKit.
+ * On-chain identity for the preflight service, managed with Coinbase CDP AgentKit.
  *
  * The server's revenue wallet is a CDP v2 server wallet created (or reloaded)
  * through AgentKit's CdpEvmWalletProvider. Its address is the `payTo` target
