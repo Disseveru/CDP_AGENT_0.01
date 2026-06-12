@@ -115,11 +115,11 @@ npm run paid-test      # full E2E: auto-funds a local buyer wallet via the CDP U
 
 Change `NETWORK=base` in `.env` and restart. Payments will then settle in real USDC via the CDP facilitator, and the service is auto-indexed in the x402 Bazaar after the first sale.
 
-### Deploy
+### Deploy on Railway
 
-A [Render](https://render.com) blueprint is included (`render.yaml`) — point Render at this repo and it deploys `gas-oracle-mcp/` as a web service. Set the same env vars in the Render dashboard, plus `PUBLIC_URL=https://<your-app-url>`.
+A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.toml`). Connect this GitHub repo, set the service **Root Directory** to `gas-oracle-mcp`, generate a public domain, and add your CDP env vars in the Railway dashboard. `PUBLIC_URL` is optional on Railway — the server auto-detects `RAILWAY_PUBLIC_DOMAIN`.
 
-See `gas-oracle-mcp/README.md` for the full architecture and buyer-agent integration details.
+See `gas-oracle-mcp/README.md` for step-by-step Railway setup and buyer-agent integration details.
 
 ---
 
@@ -129,8 +129,8 @@ See `gas-oracle-mcp/README.md` for the full architecture and buyer-agent integra
 .
 ├── index.js              Root CLI agent (CommonJS, Node 20+)
 ├── package.json
-├── render.yaml           Render blueprint for gas-oracle-mcp
 ├── gas-oracle-mcp/       Paid MCP server subproject (TypeScript, ESM)
+│   ├── railway.toml      Railway deploy config
 │   ├── src/
 │   ├── scripts/
 │   └── README.md

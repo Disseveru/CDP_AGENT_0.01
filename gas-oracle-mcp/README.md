@@ -75,9 +75,30 @@ NETWORK=base
 
 Restart with `npm start`. Payments now settle in real USDC via the CDP Facilitator, and after the first sale your service is automatically indexed in the x402 Bazaar where buyer agents discover it.
 
-### Step 6 (optional) - Host it 24/7
+### Step 6 - Host it 24/7 on Railway
 
-Deploy the `gas-oracle-mcp` folder to any Node.js host (Railway, Render, Fly.io). Set the same environment variables from your `.env` in the host's dashboard, plus `PUBLIC_URL=https://your-app-url` so the service card advertises the right endpoint.
+This repo includes `railway.toml` with the build, start, and health-check commands preconfigured.
+
+1. Go to [railway.com](https://railway.com) and create a project from this GitHub repo.
+2. Open the service **Settings** and set **Root Directory** to `gas-oracle-mcp`.
+3. Under **Config-as-code**, set the config file path to `/gas-oracle-mcp/railway.toml` (absolute from repo root).
+4. Open **Variables** and add:
+   - `CDP_API_KEY`
+   - `CDP_PRIVATE_KEY`
+   - `CDP_WALLET_SECRET`
+   - `NETWORK` — `base-sepolia` for testnet, `base` for mainnet
+   - Optional: `PRICE_GAS_SNAPSHOT`, `PRICE_RECOMMEND`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`
+5. Open **Networking** and click **Generate Domain** to assign a public URL.
+6. Deploy. `PUBLIC_URL` is optional — when unset, the server uses Railway's `RAILWAY_PUBLIC_DOMAIN` automatically.
+
+After deploy, verify from your machine (replace the host with your Railway domain):
+
+```bash
+curl https://your-app.up.railway.app/health
+cd gas-oracle-mcp && SERVER_URL=https://your-app.up.railway.app/mcp npm run smoke-test
+```
+
+Health check path: `/health` (configured in `railway.toml`).
 
 ## How buyer agents connect
 
