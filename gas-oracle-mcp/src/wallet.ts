@@ -24,19 +24,23 @@ export interface CdpCredentials {
   walletSecret: string;
 }
 
+function resolveEnvAlias(primaryName: string, fallbackName: string): string | undefined {
+  return process.env[primaryName] || process.env[fallbackName];
+}
+
 /**
  * Reads CDP credentials from the environment, normalizing single-line PEM
  * secrets (as injected by most cloud secret managers) into valid multi-line
  * PEM, and converting EC (sec1) keys to the pkcs8 form the CDP v2 SDK expects.
  */
 export function resolveCdpCredentials(): CdpCredentials {
-  const apiKeyId = process.env.CDP_API_KEY;
-  const rawSecret = process.env.CDP_PRIVATE_KEY;
+  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
+  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
   const walletSecret = process.env.CDP_WALLET_SECRET;
 
   if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
-      "Missing CDP credentials. Set CDP_API_KEY, CDP_PRIVATE_KEY, and CDP_WALLET_SECRET in .env",
+      "Missing CDP credentials. Set CDP_API_KEY (or CDP_API_KEY_ID), CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET), and CDP_WALLET_SECRET in .env",
     );
   }
 

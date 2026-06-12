@@ -10,8 +10,8 @@ Node.js CLI using **Coinbase CDP AgentKit** (`@coinbase/agentkit`) and **LangCha
 
 | Variable | Purpose |
 |---|---|
-| `CDP_API_KEY` | CDP API key ID |
-| `CDP_PRIVATE_KEY` | CDP API key private key (EC PEM; may be injected as a single line) |
+| `CDP_API_KEY` or `CDP_API_KEY_ID` | CDP API key ID |
+| `CDP_PRIVATE_KEY` or `CDP_API_KEY_SECRET` | CDP API key private key (EC PEM; may be injected as a single line) |
 | `CDP_WALLET_SECRET` | CDP wallet secret for v2 account operations |
 | `BASE_PAYMASTER` | Set to `0`/`false` to disable CDP Smart Wallet + Base Paymaster (enabled by default) |
 | `PAYMASTER_URL` | Optional override for the CDP Paymaster & Bundler endpoint |
@@ -19,6 +19,7 @@ Node.js CLI using **Coinbase CDP AgentKit** (`@coinbase/agentkit`) and **LangCha
 | `USE_LEGACY_WALLET` | Set to `1`/`true` to enable the legacy CDP wallet mode required by `deploy_token` |
 
 Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
+Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` aliases; the root CLI and AgentWire both accept them.
 
 ### Commands
 

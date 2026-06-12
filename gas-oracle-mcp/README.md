@@ -38,8 +38,8 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
 2. Select this repo (no Root Directory change needed — `/railway.toml` at the repo root builds `gas-oracle-mcp/`, but the deployed service itself is AgentWire)
 3. Open **Variables** and add:
-   - `CDP_API_KEY` (API key ID)
-   - `CDP_PRIVATE_KEY` (API key secret / PEM)
+   - `CDP_API_KEY` (or `CDP_API_KEY_ID`) for the API key ID
+   - `CDP_PRIVATE_KEY` (or `CDP_API_KEY_SECRET`) for the API key secret / PEM
    - `CDP_WALLET_SECRET`
    - `NETWORK` = `base` (real money, Bazaar-discoverable) or `base-sepolia` (testnet)
 4. **Networking** → **Generate Domain**
@@ -77,6 +77,8 @@ npm start
 npm run smoke-test     # free
 npm run paid-test      # settles real testnet USDC
 ```
+
+Cloud secret managers often inject `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET`; AgentWire accepts those aliases too.
 
 ## Revenue
 

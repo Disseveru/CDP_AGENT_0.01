@@ -34,14 +34,18 @@ const DEFAULT_RPC_URLS = {
  *
  * @returns {{ apiKeyId: string, apiKeySecretLegacy: string, apiKeySecretV2: string, walletSecret: string }}
  */
+function resolveEnvAlias(primaryName, fallbackName) {
+  return process.env[primaryName] || process.env[fallbackName];
+}
+
 function resolveCdpCredentials() {
-  const apiKeyId = process.env.CDP_API_KEY;
-  const apiKeySecretRaw = process.env.CDP_PRIVATE_KEY;
+  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
+  const apiKeySecretRaw = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
   const walletSecret = process.env.CDP_WALLET_SECRET;
 
   if (!apiKeyId || !apiKeySecretRaw || !walletSecret) {
     throw new Error(
-      "Missing CDP credentials. Set CDP_API_KEY, CDP_PRIVATE_KEY, and CDP_WALLET_SECRET.",
+      "Missing CDP credentials. Set CDP_API_KEY (or CDP_API_KEY_ID), CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET), and CDP_WALLET_SECRET.",
     );
   }
 
@@ -150,12 +154,14 @@ function resolveRpcUrl(networkId) {
  */
 function validateEnvironment() {
   const missing = [];
+  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
+  const apiKeySecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
 
-  if (!process.env.CDP_API_KEY) {
-    missing.push("CDP_API_KEY");
+  if (!apiKeyId) {
+    missing.push("CDP_API_KEY or CDP_API_KEY_ID");
   }
-  if (!process.env.CDP_PRIVATE_KEY) {
-    missing.push("CDP_PRIVATE_KEY");
+  if (!apiKeySecret) {
+    missing.push("CDP_PRIVATE_KEY or CDP_API_KEY_SECRET");
   }
   if (!process.env.CDP_WALLET_SECRET) {
     missing.push("CDP_WALLET_SECRET");
@@ -629,6 +635,8 @@ module.exports = {
   isLegacyWalletData,
   isLegacyWalletEnabled,
   parseCommandInput,
+  resolveCdpCredentials,
+  validateEnvironment,
 };
 
 if (require.main === module) {
