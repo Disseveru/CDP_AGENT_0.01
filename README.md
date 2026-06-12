@@ -121,6 +121,24 @@ A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.tom
 
 See `gas-oracle-mcp/README.md` for step-by-step Railway setup and buyer-agent integration details.
 
+### Fix deployments from Cursor
+
+This repo includes [Railway MCP](https://docs.railway.com/ai/mcp-server#cursor) in `.cursor/mcp.json` so Cursor can manage Railway directly (logs, redeploys, env vars, and deployment debugging).
+
+1. **Restart Cursor** after pulling so it picks up `.cursor/mcp.json`.
+2. Open **Cursor Settings → MCP** and confirm `railway` and/or `railway-remote` are enabled.
+3. **Authenticate:**
+   - **`railway-remote`** (easiest): when Cursor connects, sign in to Railway in the browser (OAuth). Use this to ask things like *"Why is my backend crashing on deploy?"* — it can call Railway's `railway-agent` tool.
+   - **`railway`** (local CLI): install the [Railway CLI](https://docs.railway.com/develop/cli), then run `railway login`. Gives direct access to logs, variables, deploys, and more.
+
+One-time CLI setup (optional, for the local server):
+
+```bash
+bash <(curl -fsSL https://railway.com/install.sh)
+railway login
+railway mcp install --agent cursor   # merges into ~/.cursor/mcp.json if you prefer user-level config
+```
+
 ---
 
 ## Repo layout
@@ -134,5 +152,7 @@ See `gas-oracle-mcp/README.md` for step-by-step Railway setup and buyer-agent in
 │   ├── src/
 │   ├── scripts/
 │   └── README.md
+├── .cursor/
+│   └── mcp.json          Railway MCP servers for Cursor
 └── AGENTS.md             Agent / contributor instructions
 ```

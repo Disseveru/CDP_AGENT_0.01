@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "railway": {
+      "command": "railway",
+      "args": ["mcp"]
+    },
+    "railway-remote": {
+      "url": "https://mcp.railway.com"
+    }
+  }
+}
