@@ -10,16 +10,28 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createPaymentWrapper } from "@x402/mcp";
-import type { x402ResourceServer } from "@x402/core/server";
+import type {
+  HTTPAdapter,
+  HTTPRequestContext,
+  HTTPResponseInstructions,
+  x402HTTPResourceServer,
+  x402ResourceServer,
+} from "@x402/core/server";
 import type { PaymentRequirements } from "@x402/core/types";
 import express from "express";
+import type { Request, Response } from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, drainInbox, peekInbox } from "./inbox.js";
 import { appendEvent, inboxExists } from "./store.js";
-import { buildAccepts, buildDiscoveryExtension, createResourceServer } from "./payments.js";
+import {
+  buildAccepts,
+  buildDiscoveryExtension,
+  createDiscoveryHttpServer,
+  createResourceServer,
+} from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
 import type { OracleIdentity } from "./wallet.js";
 
@@ -132,6 +144,7 @@ interface RuntimeState {
   status: "starting" | "ready" | "error";
   identity?: OracleIdentity;
   resourceServer?: x402ResourceServer;
+  discoveryHttpServer?: x402HTTPResourceServer;
   tools?: PreparedTool[];
   error?: string;
 }
@@ -160,9 +173,11 @@ async function initializeRuntime(state: RuntimeState): Promise<void> {
     const identity = await initializeOracleIdentity();
     const resourceServer = await createResourceServer();
     const tools = await prepareTools(resourceServer, identity.address);
+    const discoveryHttpServer = await createDiscoveryHttpServer(resourceServer, identity.address);
 
     state.identity = identity;
     state.resourceServer = resourceServer;
+    state.discoveryHttpServer = discoveryHttpServer;
     state.tools = tools;
     state.status = "ready";
     state.error = undefined;
@@ -177,14 +192,132 @@ function isReady(state: RuntimeState): state is RuntimeState & {
   status: "ready";
   identity: OracleIdentity;
   resourceServer: x402ResourceServer;
+  discoveryHttpServer: x402HTTPResourceServer;
   tools: PreparedTool[];
 } {
   return Boolean(
     state.status === "ready" &&
       state.identity &&
       state.resourceServer &&
+      state.discoveryHttpServer &&
       state.tools,
   );
+}
+
+function buildServiceCard(state: RuntimeState): Record<string, unknown> {
+  const tools = state.tools || [];
+  return {
+    service: CONFIG.serviceName,
+    version: CONFIG.serviceVersion,
+    status: state.status,
+    tagline: "Webhook inbox + web fetch for autonomous agents",
+    protocol: "MCP over Streamable HTTP + x402 v2 payments",
+    endpoint: `${CONFIG.publicUrl}/mcp`,
+    webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
+    paymentNetwork: CONFIG.caip2Network,
+    facilitator: CONFIG.facilitatorUrl,
+    payTo: state.identity?.address,
+    error: state.error,
+    tools: [
+      { name: "create_inbox", price: "free" },
+      ...tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
+      { name: "ping", price: "free" },
+    ],
+  };
+}
+
+function createExpressHttpAdapter(req: Request): HTTPAdapter {
+  return {
+    getHeader: (name: string) => req.get(name),
+    getMethod: () => req.method,
+    getPath: () => req.path,
+    getUrl: () => `${CONFIG.publicUrl.replace(/\/$/, "")}${req.originalUrl}`,
+    getAcceptHeader: () => req.get("accept") || "",
+    getUserAgent: () => req.get("user-agent") || "",
+    getQueryParams: () =>
+      Object.fromEntries(
+        Object.entries(req.query).map(([key, value]) => [
+          key,
+          Array.isArray(value) ? value.map((v) => String(v)) : String(value ?? ""),
+        ]),
+      ),
+    getQueryParam: (name: string) => {
+      const value = req.query[name];
+      if (value === undefined) return undefined;
+      return Array.isArray(value) ? value.map((v) => String(v)) : String(value);
+    },
+    getBody: () => req.body,
+  };
+}
+
+function writeHttpInstructions(res: Response, instructions: HTTPResponseInstructions): void {
+  res.status(instructions.status);
+  for (const [name, value] of Object.entries(instructions.headers)) {
+    res.setHeader(name, value);
+  }
+
+  if (instructions.body === undefined) {
+    res.end();
+    return;
+  }
+
+  if (instructions.isHtml || typeof instructions.body === "string" || Buffer.isBuffer(instructions.body)) {
+    res.send(instructions.body);
+    return;
+  }
+
+  res.json(instructions.body);
+}
+
+async function handleDiscoveryRequest(
+  req: Request,
+  res: Response,
+  state: RuntimeState,
+): Promise<void> {
+  if (!isReady(state)) {
+    res.status(503).json(buildServiceCard(state));
+    return;
+  }
+
+  const requestContext: HTTPRequestContext = {
+    adapter: createExpressHttpAdapter(req),
+    path: req.path,
+    method: req.method,
+    paymentHeader: req.get("payment-signature"),
+  };
+  const paymentResult = await state.discoveryHttpServer.processHTTPRequest(requestContext);
+
+  if (paymentResult.type === "payment-error") {
+    writeHttpInstructions(res, paymentResult.response);
+    return;
+  }
+
+  const body = buildServiceCard(state);
+
+  if (paymentResult.type === "payment-verified") {
+    const responseBody = Buffer.from(JSON.stringify(body));
+    const settlement = await state.discoveryHttpServer.processSettlement(
+      paymentResult.paymentPayload,
+      paymentResult.paymentRequirements,
+      paymentResult.declaredExtensions,
+      {
+        request: requestContext,
+        responseBody,
+        responseHeaders: { "Content-Type": "application/json" },
+      },
+    );
+
+    if (!settlement.success) {
+      writeHttpInstructions(res, settlement.response);
+      return;
+    }
+
+    for (const [name, value] of Object.entries(settlement.headers)) {
+      res.setHeader(name, value);
+    }
+  }
+
+  res.json(body);
 }
 
 function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[]): McpServer {
@@ -341,26 +474,8 @@ async function main(): Promise<void> {
     });
   });
 
-  app.get("/", (_req, res) => {
-    const tools = state.tools || [];
-    res.json({
-      service: CONFIG.serviceName,
-      version: CONFIG.serviceVersion,
-      status: state.status,
-      tagline: "Webhook inbox + web fetch for autonomous agents",
-      protocol: "MCP over Streamable HTTP + x402 v2 payments",
-      endpoint: `${CONFIG.publicUrl}/mcp`,
-      webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
-      paymentNetwork: CONFIG.caip2Network,
-      facilitator: CONFIG.facilitatorUrl,
-      payTo: state.identity?.address,
-      error: state.error,
-      tools: [
-        { name: "create_inbox", price: "free" },
-        ...tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
-        { name: "ping", price: "free" },
-      ],
-    });
+  app.get("/", (req, res, next) => {
+    handleDiscoveryRequest(req, res, state).catch(next);
   });
 
   app.get("/health", (_req, res) => {

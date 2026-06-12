@@ -13,6 +13,8 @@
 
 This is real infrastructure, not a demo. Every agent loop that waits for external input will call `drain_inbox` over and over.
 
+`GET /` is an x402 v2 paid discovery endpoint for CDP Bazaar indexing. Unpaid requests return `402 Payment Required` with the base64 `PAYMENT-REQUIRED` header and Bazaar metadata.
+
 ## Tools
 
 | Tool | Price | What it does |
@@ -39,7 +41,7 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
    - `CDP_API_KEY` (API key ID)
    - `CDP_PRIVATE_KEY` (API key secret / PEM)
    - `CDP_WALLET_SECRET`
-   - `NETWORK` = `base-sepolia` (testnet) or `base` (real money)
+   - `NETWORK` = `base` (real money, Bazaar-discoverable) or `base-sepolia` (testnet)
 4. **Networking** → **Generate Domain**
 5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`. Then visit `/ready` to confirm CDP/x402 initialization completed.
 
@@ -49,7 +51,7 @@ Your public URLs:
 
 ### 3. Go live on mainnet (real USDC)
 
-Change `NETWORK=base` in Railway variables and redeploy. After the first paid call, your service auto-lists in the **x402 Bazaar** where buyer agents discover it.
+Keep `NETWORK=base` in Railway variables and redeploy. After the first paid call settles through the CDP facilitator, your service auto-lists in the **x402 Bazaar** where buyer agents discover it.
 
 ## How it works (agent workflow)
 
