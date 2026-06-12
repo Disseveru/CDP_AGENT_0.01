@@ -26,11 +26,12 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 
 | Variable | Used by | Purpose |
 |---|---|---|
-| `CDP_API_KEY` | both | CDP API key ID (UUID-style string) |
-| `CDP_PRIVATE_KEY` | both | CDP API key secret (PEM, may be a single line — `\n` escapes are fine) |
+| `CDP_API_KEY` or `CDP_API_KEY_ID` | both | CDP API key ID (UUID-style string) |
+| `CDP_PRIVATE_KEY` or `CDP_API_KEY_SECRET` | both | CDP API key secret (PEM, may be a single line — `\n` escapes are fine) |
 | `CDP_WALLET_SECRET` | both | CDP Wallet Secret for v2 server-wallet operations |
 
 > Do **not** use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
+> Cloud secret managers often inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` aliases; both entrypoints accept them.
 
 ### Optional (root CLI)
 
