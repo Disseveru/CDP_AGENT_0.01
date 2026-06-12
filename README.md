@@ -38,6 +38,7 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 |---|---|---|
 | `BASE_PAYMASTER` | `1` (on) | Set to `0`/`false` to disable the CDP Smart Wallet + Base Paymaster path |
 | `USE_EOA_WALLET` | `0` (off) | Set to `1`/`true` to force a standard CDP server wallet instead of a Smart Wallet |
+| `USE_LEGACY_WALLET` | `0` (off) | Set to `1`/`true` for ERC-20 token deployment via `deploy_token` |
 | `PAYMASTER_URL` | auto-resolved | Override the CDP Paymaster & Bundler endpoint |
 | `NETWORK_ID` | `base-sepolia` | Use `base-mainnet` for production |
 | `RPC_URL` | network default | Override the public Base RPC |
@@ -71,7 +72,7 @@ Example commands:
 wallet
 mint 0xYourNftContract 0xDestinationAddress
 send 0xRecipient 0.001
-run deploy_token {"name":"MyToken","symbol":"MTK","totalSupply":1000000}
+deploy-token "Meme Point" POINT 1000000000
 ```
 
 By default it boots a **CDP Smart Wallet** with the **Base Paymaster** for sponsored (gasless) transactions on Base Sepolia. To use a regular CDP v2 EOA wallet instead:
@@ -88,7 +89,15 @@ Available tools depend on the wallet mode:
 
 - **Smart Wallet** (default): `mint`, `get_wallet_details`, `native_transfer`
 - **CDP v2 EOA**: `mint`, `get_wallet_details`, `request_faucet_funds`
-- **Legacy**: also adds `deploy_token`
+- **Legacy** (`USE_LEGACY_WALLET=1`): `deploy_token`, `mint`, `get_wallet_details`
+
+To launch an ERC-20 meme token on Base mainnet, fund the wallet first and run:
+
+```bash
+NETWORK_ID=base-mainnet USE_LEGACY_WALLET=1 npm start
+# then at Prompt>:
+deploy-token "Meme Point" POINT 1000000000
+```
 
 If wallet init fails with `401`/`Unauthorized`, double-check your CDP credentials in the CDP Dashboard.
 
@@ -123,7 +132,7 @@ Change `NETWORK=base` in `.env` and restart. Payments will then settle in real U
 
 ### Deploy on Railway
 
-A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.toml`). Connect this GitHub repo, set the service **Root Directory** to `gas-oracle-mcp`, and name the Railway service `AgentWire` if you want the dashboard label to match the app name. Generate a public domain and add your CDP env vars in the Railway dashboard. `PUBLIC_URL` is optional on Railway — the server auto-detects `RAILWAY_PUBLIC_DOMAIN`.
+A [Railway](https://railway.com) config is included (`gas-oracle-mcp/railway.toml`). Connect this GitHub repo, set the service **Root Directory** to `gas-oracle-mcp`, and name the Railway service `AgentWire` if you want the dashboard label to match the app name. Generate a public domain and add your CDP env vars in the Railway dashboard. `PUBLIC_URL` is optional on Railway — the server auto-detects `RAILWAY_PUBLIC_DOMAIN`. Railway checks `/health` for liveness; use `/ready` to confirm CDP/x402 initialization completed.
 
 See `gas-oracle-mcp/README.md` for step-by-step Railway setup and buyer-agent integration details.
 

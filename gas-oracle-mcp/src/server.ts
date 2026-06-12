@@ -21,6 +21,7 @@ import { createInbox, drainInbox, peekInbox } from "./inbox.js";
 import { appendEvent, inboxExists } from "./store.js";
 import { buildAccepts, buildDiscoveryExtension, createResourceServer } from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
+import type { OracleIdentity } from "./wallet.js";
 
 interface PaidToolDefinition {
   name: string;
@@ -127,6 +128,14 @@ interface PreparedTool {
   extensions: Record<string, unknown>;
 }
 
+interface RuntimeState {
+  status: "starting" | "ready" | "error";
+  identity?: OracleIdentity;
+  resourceServer?: x402ResourceServer;
+  tools?: PreparedTool[];
+  error?: string;
+}
+
 async function prepareTools(
   resourceServer: x402ResourceServer,
   payTo: string,
@@ -143,6 +152,38 @@ async function prepareTools(
         outputExample: definition.outputExample,
       }),
     })),
+  );
+}
+
+async function initializeRuntime(state: RuntimeState): Promise<void> {
+  try {
+    const identity = await initializeOracleIdentity();
+    const resourceServer = await createResourceServer();
+    const tools = await prepareTools(resourceServer, identity.address);
+
+    state.identity = identity;
+    state.resourceServer = resourceServer;
+    state.tools = tools;
+    state.status = "ready";
+    state.error = undefined;
+  } catch (error) {
+    state.status = "error";
+    state.error = error instanceof Error ? error.message : String(error);
+    console.error("Fatal initialization error:", error);
+  }
+}
+
+function isReady(state: RuntimeState): state is RuntimeState & {
+  status: "ready";
+  identity: OracleIdentity;
+  resourceServer: x402ResourceServer;
+  tools: PreparedTool[];
+} {
+  return Boolean(
+    state.status === "ready" &&
+      state.identity &&
+      state.resourceServer &&
+      state.tools,
   );
 }
 
@@ -216,11 +257,9 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
 async function main(): Promise<void> {
   console.log(`[boot] ${CONFIG.serviceName} v${CONFIG.serviceVersion} starting...`);
 
-  const identity = await initializeOracleIdentity();
-  const resourceServer = await createResourceServer();
-  const tools = await prepareTools(resourceServer, identity.address);
-
   const app = express();
+  const state: RuntimeState = { status: "starting" };
+
   app.use(express.json({ limit: "1mb" }));
   app.use(express.text({ type: ["text/*", "application/xml"], limit: "1mb" }));
 
@@ -260,8 +299,21 @@ async function main(): Promise<void> {
   });
 
   app.post("/mcp", async (req, res) => {
+    if (!isReady(state)) {
+      res.status(503).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: `AgentWire is ${state.status}`,
+          data: state.error,
+        },
+        id: null,
+      });
+      return;
+    }
+
     try {
-      const mcpServer = buildMcpServer(resourceServer, tools);
+      const mcpServer = buildMcpServer(state.resourceServer, state.tools);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       res.on("close", () => {
         transport.close();
@@ -290,16 +342,19 @@ async function main(): Promise<void> {
   });
 
   app.get("/", (_req, res) => {
+    const tools = state.tools || [];
     res.json({
       service: CONFIG.serviceName,
       version: CONFIG.serviceVersion,
+      status: state.status,
       tagline: "Webhook inbox + web fetch for autonomous agents",
       protocol: "MCP over Streamable HTTP + x402 v2 payments",
       endpoint: `${CONFIG.publicUrl}/mcp`,
       webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
       paymentNetwork: CONFIG.caip2Network,
       facilitator: CONFIG.facilitatorUrl,
-      payTo: identity.address,
+      payTo: state.identity?.address,
+      error: state.error,
       tools: [
         { name: "create_inbox", price: "free" },
         ...tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
@@ -309,17 +364,47 @@ async function main(): Promise<void> {
   });
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: CONFIG.serviceName, payTo: identity.address, network: CONFIG.caip2Network });
+    res.json({
+      status: "ok",
+      service: CONFIG.serviceName,
+      runtimeStatus: state.status,
+      payTo: state.identity?.address,
+      network: CONFIG.caip2Network,
+      error: state.error,
+    });
   });
 
-  app.listen(CONFIG.port, () => {
+  app.get("/ready", (_req, res) => {
+    if (!isReady(state)) {
+      res.status(503).json({
+        status: state.status,
+        service: CONFIG.serviceName,
+        network: CONFIG.caip2Network,
+        error: state.error,
+      });
+      return;
+    }
+
+    res.json({
+      status: "ready",
+      service: CONFIG.serviceName,
+      payTo: state.identity.address,
+      network: CONFIG.caip2Network,
+    });
+  });
+
+  app.listen(CONFIG.port, "0.0.0.0", () => {
     console.log(`[boot] AgentWire listening on port ${CONFIG.port}`);
     console.log(`[boot] MCP endpoint:     ${CONFIG.publicUrl}/mcp`);
     console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
-    console.log(`[boot] Revenue wallet:   ${identity.address}`);
-    console.log(
-      `[boot] Paid tools: ${tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`,
-    );
+    void initializeRuntime(state).then(() => {
+      if (isReady(state)) {
+        console.log(`[boot] Revenue wallet:   ${state.identity.address}`);
+        console.log(
+          `[boot] Paid tools: ${state.tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`,
+        );
+      }
+    });
   });
 }
 

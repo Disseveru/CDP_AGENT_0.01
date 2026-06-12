@@ -16,6 +16,7 @@ Node.js CLI using **Coinbase CDP AgentKit** (`@coinbase/agentkit`) and **LangCha
 | `BASE_PAYMASTER` | Set to `0`/`false` to disable CDP Smart Wallet + Base Paymaster (enabled by default) |
 | `PAYMASTER_URL` | Optional override for the CDP Paymaster & Bundler endpoint |
 | `USE_EOA_WALLET` | Set to `1`/`true` to force the standard CDP server wallet instead of Smart Wallet |
+| `USE_LEGACY_WALLET` | Set to `1`/`true` to enable the legacy CDP wallet mode required by `deploy_token` |
 
 Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 
@@ -35,7 +36,9 @@ Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 - Wallet state persists to `wallet_data.txt` (gitignored). Delete this file to force a new wallet on the next run.
 - By default the app uses `CdpSmartWalletProvider` with CDP Base Paymaster for sponsored transactions on Base Sepolia. Set `USE_EOA_WALLET=1` to use `CdpEvmWalletProvider` (CDP v2) instead, or `BASE_PAYMASTER=0` to disable paymaster.
 - The paymaster URL is auto-resolved from CDP API credentials, or set `PAYMASTER_URL` to override.
-- Legacy `LegacyCdpWalletProvider` remains available for `deploy_token` when smart wallet and v2 are disabled.
+- Legacy `LegacyCdpWalletProvider` remains available for `deploy_token`; use `USE_LEGACY_WALLET=1` to force this mode.
+- Use `NETWORK_ID=base-mainnet USE_LEGACY_WALLET=1 npm start` to launch an ERC-20 token on Base mainnet with the root CLI.
+- AgentWire answers `/health` as a Railway liveness check immediately after binding; use `/ready` to verify CDP/x402 initialization.
 - Focused AgentKit tools (smart wallet): `mint`, `get_wallet_details`, `native_transfer`.
 - Type `help` at the `Prompt>` REPL for commands, or `exit` to quit.
 - If wallet initialization fails with `401`/`Unauthorized`, verify CDP API credentials in the Coinbase Developer Platform dashboard.

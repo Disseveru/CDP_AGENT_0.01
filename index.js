@@ -74,6 +74,10 @@ function resolveCdpCredentials() {
  * @param {object|undefined} existingWalletData
  */
 function isBasePaymasterEnabled() {
+  if (isLegacyWalletEnabled()) {
+    return false;
+  }
+
   if (process.env.USE_EOA_WALLET === "1" || process.env.USE_EOA_WALLET === "true") {
     return false;
   }
@@ -83,6 +87,14 @@ function isBasePaymasterEnabled() {
   }
 
   return true;
+}
+
+function isLegacyWalletEnabled() {
+  return process.env.USE_LEGACY_WALLET === "1" || process.env.USE_LEGACY_WALLET === "true";
+}
+
+function isLegacyWalletData(walletData) {
+  return Boolean(walletData && (walletData.walletId || walletData.seed));
 }
 
 /**
@@ -249,6 +261,19 @@ async function createSmartWalletProvider(credentials, existingWalletData) {
 async function createWalletProvider(credentials, existingWalletData) {
   const { apiKeyId, apiKeySecretLegacy, apiKeySecretV2, walletSecret } = credentials;
 
+  if (isLegacyWalletEnabled()) {
+    const walletProvider = await LegacyCdpWalletProvider.configureWithWallet({
+      apiKeyId,
+      apiKeySecret: apiKeySecretLegacy,
+      networkId: NETWORK_ID,
+      ...(isLegacyWalletData(existingWalletData)
+        ? { cdpWalletData: JSON.stringify(existingWalletData) }
+        : {}),
+    });
+
+    return { walletProvider, walletMode: "legacy" };
+  }
+
   if (isBasePaymasterEnabled()) {
     return createSmartWalletProvider(credentials, existingWalletData);
   }
@@ -340,6 +365,8 @@ function printHelp(tools) {
   console.log("Commands:");
   console.log("  help                         Show this help");
   console.log("  wallet                       Show wallet address, network, and balances");
+  console.log("  deploy-token <name> <symbol> <supply>");
+  console.log("                               Deploy an ERC-20 token (requires USE_LEGACY_WALLET=1)");
   console.log("  mint <contract> <destination> Mint an ERC-721 NFT");
   console.log("  send <to> <amount>           Send native ETH (smart wallet mode)");
   console.log("  faucet                       Request Base Sepolia test funds (EOA mode)");
@@ -381,6 +408,8 @@ function parseCommandInput(input, tools, toolsByName) {
 
   const aliases = {
     wallet: "get_wallet_details",
+    "deploy-token": "deploy_token",
+    deploy_token: "deploy_token",
     send: "native_transfer",
     faucet: "request_faucet_funds",
   };
@@ -399,6 +428,18 @@ function parseCommandInput(input, tools, toolsByName) {
       args: {
         contractAddress: rest[0].replace(/^['"]|['"]$/g, ""),
         destination: rest[1].replace(/^['"]|['"]$/g, ""),
+      },
+    };
+  }
+
+  if ((normalized === "deploy-token" || normalized === "deploy_token") && rest.length >= 3) {
+    return {
+      type: "invoke",
+      tool,
+      args: {
+        name: rest[0].replace(/^['"]|['"]$/g, ""),
+        symbol: rest[1].replace(/^['"]|['"]$/g, ""),
+        totalSupply: BigInt(rest[2].replace(/^['"]|['"]$/g, "")),
       },
     };
   }
@@ -452,7 +493,7 @@ async function initializeToolkit() {
     existingWalletData,
   );
 
-  if (walletCreated || walletMode === "smart") {
+  if (walletCreated || walletMode === "smart" || (walletMode === "legacy" && !isLegacyWalletData(existingWalletData))) {
     await persistWallet(walletProvider);
   }
 
@@ -581,6 +622,14 @@ async function main() {
   const { tools, toolsByName, walletProvider } = await initializeToolkit();
   await runRepl(tools, toolsByName, walletProvider);
 }
+
+module.exports = {
+  findTool,
+  indexTools,
+  isLegacyWalletData,
+  isLegacyWalletEnabled,
+  parseCommandInput,
+};
 
 if (require.main === module) {
   main().catch((error) => {
