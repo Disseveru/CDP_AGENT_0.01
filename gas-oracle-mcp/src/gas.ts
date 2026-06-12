@@ -176,14 +176,16 @@ export async function recommendCheapestChain(txType: string): Promise<Recommenda
 
   const cheapest = rankedCosts[0];
   const mostExpensive = rankedCosts[rankedCosts.length - 1];
-  const ranking = rankedCosts.map(({ feeUsdScaled: _feeUsdScaled, ...chain }) => chain);
+  const stripFeeUsdScaled = ({ feeUsdScaled: _feeUsdScaled, ...chain }: (typeof rankedCosts)[number]) =>
+    chain;
+  const ranking = rankedCosts.map(stripFeeUsdScaled);
 
   return {
     timestamp: snapshot.timestamp,
     txType,
     gasUnits: gasUnits.toString(),
     ethUsd: snapshot.ethUsd,
-    cheapest,
+    cheapest: stripFeeUsdScaled(cheapest),
     ranking,
     maxSavingsUsd: formatScaled(mostExpensive.feeUsdScaled - cheapest.feeUsdScaled, USD_DECIMALS),
   };
