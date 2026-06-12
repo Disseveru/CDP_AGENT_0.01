@@ -4,7 +4,7 @@
 
 ### Project overview
 
-Node.js CLI agent using **Coinbase CDP AgentKit** (`@coinbase/agentkit`), **LangChain** (`@coinbase/agentkit-langchain`), and **Google Gemini** (`@langchain/google-genai`) on **Base Sepolia**. Entry point: `index.js`.
+Node.js CLI using **Coinbase CDP AgentKit** (`@coinbase/agentkit`) and **LangChain tool bindings** (`@coinbase/agentkit-langchain`) on **Base Sepolia**. Entry point: `index.js`.
 
 ### Required environment variables
 
@@ -13,11 +13,9 @@ Node.js CLI agent using **Coinbase CDP AgentKit** (`@coinbase/agentkit`), **Lang
 | `CDP_API_KEY` | CDP API key ID |
 | `CDP_PRIVATE_KEY` | CDP API key private key (EC PEM; may be injected as a single line) |
 | `CDP_WALLET_SECRET` | CDP wallet secret for v2 account operations |
-| `GEMINI_API_KEY` | Google Gemini API key |
 | `BASE_PAYMASTER` | Set to `0`/`false` to disable CDP Smart Wallet + Base Paymaster (enabled by default) |
 | `PAYMASTER_URL` | Optional override for the CDP Paymaster & Bundler endpoint |
 | `USE_EOA_WALLET` | Set to `1`/`true` to force the standard CDP server wallet instead of Smart Wallet |
-| `GEMINI_MODEL` | Optional override for the Gemini model name (defaults to `gemini-2.0-flash`) |
 
 Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 
@@ -26,7 +24,7 @@ Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 | Task | Command |
 |---|---|
 | Install dependencies | `npm install` |
-| Start interactive agent REPL | `npm start` or `node index.js` |
+| Start interactive CLI REPL | `npm start` or `node index.js` |
 
 ### Subprojects
 
@@ -39,5 +37,5 @@ Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 - The paymaster URL is auto-resolved from CDP API credentials, or set `PAYMASTER_URL` to override.
 - Legacy `LegacyCdpWalletProvider` remains available for `deploy_token` when smart wallet and v2 are disabled.
 - Focused AgentKit tools (smart wallet): `mint`, `get_wallet_details`, `native_transfer`.
-- Type `exit` at the `Prompt>` REPL to quit.
+- Type `help` at the `Prompt>` REPL for commands, or `exit` to quit.
 - If wallet initialization fails with `401`/`Unauthorized`, verify CDP API credentials in the Coinbase Developer Platform dashboard.

@@ -4,10 +4,6 @@ const path = require("path");
 const readline = require("readline");
 
 const dotenv = require("dotenv");
-const { HumanMessage } = require("@langchain/core/messages");
-const { MemorySaver } = require("@langchain/langgraph-checkpoint");
-const { createReactAgent } = require("@langchain/langgraph/prebuilt");
-const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
 const {
   AgentKit,
   CdpEvmWalletProvider,
@@ -151,9 +147,6 @@ function validateEnvironment() {
   }
   if (!process.env.CDP_WALLET_SECRET) {
     missing.push("CDP_WALLET_SECRET");
-  }
-  if (!process.env.GEMINI_API_KEY) {
-    missing.push("GEMINI_API_KEY");
   }
 
   if (missing.length > 0) {
@@ -308,9 +301,148 @@ async function createWalletProvider(credentials, existingWalletData) {
 }
 
 /**
- * Initializes AgentKit, LangChain tools, and the Gemini-powered react agent.
+ * @param {import("@langchain/core/tools").StructuredTool[]} tools
  */
-async function initializeAgent() {
+function indexTools(tools) {
+  /** @type {Map<string, import("@langchain/core/tools").StructuredTool>} */
+  const byName = new Map();
+
+  for (const tool of tools) {
+    byName.set(tool.name, tool);
+
+    const providerMatch = tool.name.match(/Provider_(.+)$/);
+    const shortName = providerMatch?.[1] || tool.name;
+    if (!byName.has(shortName)) {
+      byName.set(shortName, tool);
+    }
+  }
+
+  return byName;
+}
+
+/**
+ * @param {string} name
+ * @param {import("@langchain/core/tools").StructuredTool[]} tools
+ */
+function findTool(name, tools) {
+  const exact = tools.find((tool) => tool.name === name);
+  if (exact) {
+    return exact;
+  }
+
+  return tools.find((tool) => tool.name.endsWith(`_${name}`));
+}
+
+/**
+ * @param {import("@langchain/core/tools").StructuredTool[]} tools
+ */
+function printHelp(tools) {
+  console.log("Commands:");
+  console.log("  help                         Show this help");
+  console.log("  wallet                       Show wallet address, network, and balances");
+  console.log("  mint <contract> <destination> Mint an ERC-721 NFT");
+  console.log("  send <to> <amount>           Send native ETH (smart wallet mode)");
+  console.log("  faucet                       Request Base Sepolia test funds (EOA mode)");
+  console.log("  run <tool> [json]            Invoke any registered tool with JSON args");
+  console.log("  exit                         Quit");
+  console.log("\nRegistered tools:");
+
+  for (const tool of tools) {
+    console.log(`  ${tool.name}`);
+    if (tool.description) {
+      console.log(`    ${tool.description.split("\n")[0]}`);
+    }
+  }
+}
+
+/**
+ * @param {string} input
+ * @param {import("@langchain/core/tools").StructuredTool[]} tools
+ * @param {Map<string, import("@langchain/core/tools").StructuredTool>} toolsByName
+ */
+function parseCommandInput(input, tools, toolsByName) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower === "help" || lower === "?") {
+    return { type: "help" };
+  }
+
+  if (trimmed.startsWith("{")) {
+    throw new Error("Pass JSON args after a tool name, e.g. run mint {\"contractAddress\":\"0x...\"}.");
+  }
+
+  const tokens = trimmed.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+  const [command, ...rest] = tokens;
+  const normalized = command.toLowerCase();
+
+  const aliases = {
+    wallet: "get_wallet_details",
+    send: "native_transfer",
+    faucet: "request_faucet_funds",
+  };
+
+  const toolName = aliases[normalized] || command;
+  const tool = toolsByName.get(toolName) || findTool(toolName, tools);
+
+  if (!tool) {
+    throw new Error(`Unknown command "${command}". Type help to list available commands.`);
+  }
+
+  if (normalized === "mint" && rest.length >= 2) {
+    return {
+      type: "invoke",
+      tool,
+      args: {
+        contractAddress: rest[0].replace(/^['"]|['"]$/g, ""),
+        destination: rest[1].replace(/^['"]|['"]$/g, ""),
+      },
+    };
+  }
+
+  if ((normalized === "send" || toolName === "native_transfer") && rest.length >= 2) {
+    return {
+      type: "invoke",
+      tool,
+      args: {
+        to: rest[0].replace(/^['"]|['"]$/g, ""),
+        value: rest[1].replace(/^['"]|['"]$/g, ""),
+      },
+    };
+  }
+
+  if (normalized === "run") {
+    const [runToolName, ...jsonTokens] = rest;
+    if (!runToolName) {
+      throw new Error("Usage: run <tool> [json]");
+    }
+
+    const runTool = toolsByName.get(runToolName) || findTool(runToolName, tools);
+    if (!runTool) {
+      throw new Error(`Unknown tool "${runToolName}".`);
+    }
+
+    const jsonText = jsonTokens.join(" ").trim();
+    const args = jsonText ? JSON.parse(jsonText) : {};
+    return { type: "invoke", tool: runTool, args };
+  }
+
+  if (rest.length > 0) {
+    const jsonText = rest.join(" ").trim();
+    const args = jsonText ? JSON.parse(jsonText) : {};
+    return { type: "invoke", tool, args };
+  }
+
+  return { type: "invoke", tool, args: {} };
+}
+
+/**
+ * Initializes AgentKit and the focused LangChain tool set.
+ */
+async function initializeToolkit() {
   const credentials = resolveCdpCredentials();
   const existingWalletData = loadWalletData();
   const walletCreated = !existingWalletData;
@@ -364,31 +496,7 @@ async function initializeAgent() {
     );
   }
 
-  const llm = new ChatGoogleGenerativeAI({
-    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-    apiKey: process.env.GEMINI_API_KEY,
-    temperature: 0.2,
-  });
-
-  const memory = new MemorySaver();
-  const agentConfig = { configurable: { thread_id: "cdp-agentkit-gemini-cli" } };
-
-  const agent = createReactAgent({
-    llm,
-    tools,
-    checkpointer: memory,
-    prompt: `You are a helpful onchain agent powered by Coinbase CDP AgentKit on ${NETWORK_ID}.
-You can mint ERC-721 NFTs with mint (also referred to as mint_token).
-${
-  walletMode === "legacy"
-    ? "You can deploy ERC-20 tokens with deploy_token."
-    : walletMode === "smart"
-      ? "You use a CDP Smart Wallet with Base Paymaster for sponsored (gasless) transactions. You can send ETH with native_transfer."
-      : "You can request Base Sepolia test funds with request_faucet_funds."
-}
-Before your first onchain action, call get_wallet_details to confirm the wallet address and network.
-Be concise, accurate, and explain transaction results clearly.`,
-  });
+  const toolsByName = indexTools(tools);
 
   console.log("Wallet mode:", walletMode);
   console.log("Registered tools:", tools.map((tool) => tool.name).join(", "));
@@ -399,17 +507,17 @@ Be concise, accurate, and explain transaction results clearly.`,
     console.log("Base Paymaster:", paymasterUrl ? "enabled" : "disabled");
   }
 
-  return { agent, agentConfig, walletProvider };
+  return { tools, toolsByName, walletProvider, walletMode };
 }
 
 /**
- * Runs an interactive REPL loop for chatting with the agent.
+ * Runs an interactive REPL loop for invoking AgentKit tools directly.
  *
- * @param {Awaited<ReturnType<typeof initializeAgent>>["agent"]} agent
- * @param {Awaited<ReturnType<typeof initializeAgent>>["agentConfig"]} agentConfig
- * @param {Awaited<ReturnType<typeof initializeAgent>>["walletProvider"]} walletProvider
+ * @param {Awaited<ReturnType<typeof initializeToolkit>>["tools"]} tools
+ * @param {Awaited<ReturnType<typeof initializeToolkit>>["toolsByName"]} toolsByName
+ * @param {Awaited<ReturnType<typeof initializeToolkit>>["walletProvider"]} walletProvider
  */
-async function runRepl(agent, agentConfig, walletProvider) {
+async function runRepl(tools, toolsByName, walletProvider) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -419,7 +527,7 @@ async function runRepl(agent, agentConfig, walletProvider) {
     new Promise((resolve) => rl.question(prompt, resolve));
 
   console.log("\nCDP AgentKit CLI ready on Base Sepolia.");
-  console.log("Type your prompt, or 'exit' to quit.\n");
+  console.log("Type a command, or 'help' / 'exit'.\n");
 
   try {
     while (true) {
@@ -435,26 +543,24 @@ async function runRepl(agent, agentConfig, walletProvider) {
 
       console.log("-------------------");
 
-      const stream = await agent.stream(
-        { messages: [new HumanMessage(userInput)] },
-        agentConfig,
-      );
+      try {
+        const command = parseCommandInput(userInput, tools, toolsByName);
 
-      for await (const chunk of stream) {
-        if ("agent" in chunk) {
-          const messages = chunk.agent?.messages || [];
-          const lastMessage = messages[messages.length - 1];
-          if (lastMessage?.content) {
-            console.log(`\nAgent: ${lastMessage.content}`);
-          }
+        if (!command) {
+          continue;
         }
 
-        if ("tools" in chunk) {
-          const messages = chunk.tools?.messages || [];
-          for (const toolMessage of messages) {
-            console.log(`Tool [${toolMessage.name}]: ${toolMessage.content}`);
-          }
+        if (command.type === "help") {
+          printHelp(tools);
+          console.log("-------------------\n");
+          continue;
         }
+
+        const result = await command.tool.invoke(command.args);
+        console.log(`\n${result}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error: ${message}`);
       }
 
       console.log("-------------------\n");
@@ -472,8 +578,8 @@ async function runRepl(agent, agentConfig, walletProvider) {
 async function main() {
   validateEnvironment();
 
-  const { agent, agentConfig, walletProvider } = await initializeAgent();
-  await runRepl(agent, agentConfig, walletProvider);
+  const { tools, toolsByName, walletProvider } = await initializeToolkit();
+  await runRepl(tools, toolsByName, walletProvider);
 }
 
 if (require.main === module) {

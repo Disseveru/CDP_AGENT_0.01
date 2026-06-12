@@ -1,10 +1,10 @@
-# CDP AgentKit + Gemini CLI
+# CDP AgentKit CLI
 
 Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (Sepolia by default):
 
 | Path | What it is |
 |---|---|
-| `index.js` (root) | Interactive Node.js CLI agent powered by LangChain + Google Gemini. Mints NFTs, sends ETH, checks wallet details. Defaults to a CDP Smart Wallet with the Base Paymaster so transactions are gasless. |
+| `index.js` (root) | Interactive Node.js CLI for CDP AgentKit tools. Mints NFTs, sends ETH, checks wallet details. Defaults to a CDP Smart Wallet with the Base Paymaster so transactions are gasless. |
 | `gas-oracle-mcp/` | Standalone TypeScript MCP server (**AgentWire**). The folder keeps a legacy name, but the deployed service/package is AgentWire / `agentwire-mcp`. It sells webhook inbox relay + web fetch to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. |
 
 Both projects share the same set of Coinbase CDP credentials.
@@ -15,7 +15,6 @@ Both projects share the same set of Coinbase CDP credentials.
 
 - Node.js `>= 20`
 - A Coinbase Developer Platform account ([portal.cdp.coinbase.com](https://portal.cdp.coinbase.com)) with an API key and Wallet Secret
-- A Google AI Studio API key for Gemini ([aistudio.google.com](https://aistudio.google.com)) — root CLI only
 
 ---
 
@@ -30,7 +29,6 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 | `CDP_API_KEY` | both | CDP API key ID (UUID-style string) |
 | `CDP_PRIVATE_KEY` | both | CDP API key secret (PEM, may be a single line — `\n` escapes are fine) |
 | `CDP_WALLET_SECRET` | both | CDP Wallet Secret for v2 server-wallet operations |
-| `GEMINI_API_KEY` | root CLI | Google Gemini API key |
 
 > Do **not** use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 
@@ -43,7 +41,6 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 | `PAYMASTER_URL` | auto-resolved | Override the CDP Paymaster & Bundler endpoint |
 | `NETWORK_ID` | `base-sepolia` | Use `base-mainnet` for production |
 | `RPC_URL` | network default | Override the public Base RPC |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Override the Gemini model name |
 
 ### Optional (`gas-oracle-mcp/`)
 
@@ -66,7 +63,16 @@ npm start
 # or: node index.js
 ```
 
-You'll get an interactive `Prompt>` REPL. Type `exit` to quit.
+You'll get an interactive `Prompt>` REPL. Type `help` for commands or `exit` to quit.
+
+Example commands:
+
+```text
+wallet
+mint 0xYourNftContract 0xDestinationAddress
+send 0xRecipient 0.001
+run deploy_token {"name":"MyToken","symbol":"MTK","totalSupply":1000000}
+```
 
 By default it boots a **CDP Smart Wallet** with the **Base Paymaster** for sponsored (gasless) transactions on Base Sepolia. To use a regular CDP v2 EOA wallet instead:
 
