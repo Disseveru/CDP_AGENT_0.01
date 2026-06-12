@@ -6,6 +6,10 @@
     },
     "railway-remote": {
       "url": "https://mcp.railway.com"
+    },
+    "railway-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "@railway/mcp-server"]
     }
   }
 }
