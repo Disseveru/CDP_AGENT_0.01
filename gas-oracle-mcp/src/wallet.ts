@@ -30,13 +30,13 @@ export interface CdpCredentials {
  * PEM, and converting EC (sec1) keys to the pkcs8 form the CDP v2 SDK expects.
  */
 export function resolveCdpCredentials(): CdpCredentials {
-  const apiKeyId = process.env.CDP_API_KEY || process.env.CDP_API_KEY_ID;
-  const rawSecret = process.env.CDP_PRIVATE_KEY || process.env.CDP_API_KEY_SECRET;
+  const apiKeyId = process.env.CDP_API_KEY;
+  const rawSecret = process.env.CDP_PRIVATE_KEY;
   const walletSecret = process.env.CDP_WALLET_SECRET;
 
   if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
-      "Missing CDP credentials. Set CDP_API_KEY (or CDP_API_KEY_ID), CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET), and CDP_WALLET_SECRET in .env",
+      "Missing CDP credentials. Set CDP_API_KEY, CDP_PRIVATE_KEY, and CDP_WALLET_SECRET in .env",
     );
   }
 
@@ -73,7 +73,7 @@ function loadPersistedAddress(): `0x${string}` | undefined {
 }
 
 export interface OracleIdentity {
-  agentKit: AgentKit;
+  agentKit: AgentKit | null;
   address: string;
 }
 
@@ -82,9 +82,10 @@ export interface OracleIdentity {
  * address. The address is persisted to wallet_data.json so restarts reuse
  * the same wallet.
  *
- * If PAY_TO_ADDRESS is set, CDP wallet creation is skipped entirely.
+ * If PAY_TO_ADDRESS is set, CDP wallet creation is skipped entirely and
+ * `agentKit` is returned as `null`.
  */
-export async function initializeOracleIdentity(): Promise<OracleIdentity | { agentKit: null; address: string }> {
+export async function initializeOracleIdentity(): Promise<OracleIdentity> {
   if (CONFIG.payToOverride) {
     console.log(`[wallet] Using fixed PAY_TO_ADDRESS: ${CONFIG.payToOverride}`);
     return { agentKit: null, address: CONFIG.payToOverride };
