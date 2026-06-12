@@ -13,6 +13,7 @@
  */
 import { createAuthHeader, createCorrelationHeader } from "@coinbase/x402";
 import {
+  type FacilitatorClient,
   HTTPFacilitatorClient,
   x402HTTPResourceServer,
   x402ResourceServer,
@@ -29,6 +30,8 @@ import {
 
 import { CONFIG } from "./config.js";
 import { resolveCdpCredentials } from "./wallet.js";
+
+const CDP_X402_PLATFORM_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
 
 const SERVICE_CARD_OUTPUT_SCHEMA = {
   properties: {
@@ -90,14 +93,23 @@ export const SERVICE_CARD_OUTPUT_EXAMPLE = {
 } as const;
 
 /** Creates the facilitator client, attaching CDP auth headers on mainnet. */
-function createFacilitatorClient(): HTTPFacilitatorClient {
+function createFacilitatorClient(): FacilitatorClient {
   if (CONFIG.usesCdpFacilitator) {
-    return new HTTPFacilitatorClient(createCdpFacilitatorConfig());
+    const facilitatorClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CONFIG.facilitatorUrl));
+    const supportedClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CDP_X402_PLATFORM_URL));
+
+    return {
+      verify: (paymentPayload, paymentRequirements) =>
+        facilitatorClient.verify(paymentPayload, paymentRequirements),
+      settle: (paymentPayload, paymentRequirements) =>
+        facilitatorClient.settle(paymentPayload, paymentRequirements),
+      getSupported: () => supportedClient.getSupported(),
+    };
   }
   return new HTTPFacilitatorClient({ url: CONFIG.facilitatorUrl });
 }
 
-function createCdpFacilitatorConfig(): FacilitatorConfig {
+function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
   let credentials: ReturnType<typeof resolveCdpCredentials> | undefined;
   try {
     credentials = resolveCdpCredentials();
@@ -109,12 +121,12 @@ function createCdpFacilitatorConfig(): FacilitatorConfig {
     );
   }
 
-  const facilitatorUrl = new URL(CONFIG.facilitatorUrl);
+  const facilitatorUrl = new URL(url);
   const requestHost = facilitatorUrl.host;
   const route = facilitatorUrl.pathname.replace(/\/$/, "");
 
   return {
-    url: CONFIG.facilitatorUrl,
+    url,
     createAuthHeaders: async () => {
       const correlationHeaders = {
         "Correlation-Context": createCorrelationHeader(),
