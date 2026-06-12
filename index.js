@@ -365,7 +365,7 @@ async function initializeAgent() {
   }
 
   const llm = new ChatGoogleGenerativeAI({
-    model: "gemini-2.0-flash",
+    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
     apiKey: process.env.GEMINI_API_KEY,
     temperature: 0.2,
   });

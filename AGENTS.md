@@ -17,6 +17,7 @@ Node.js CLI agent using **Coinbase CDP AgentKit** (`@coinbase/agentkit`), **Lang
 | `BASE_PAYMASTER` | Set to `0`/`false` to disable CDP Smart Wallet + Base Paymaster (enabled by default) |
 | `PAYMASTER_URL` | Optional override for the CDP Paymaster & Bundler endpoint |
 | `USE_EOA_WALLET` | Set to `1`/`true` to force the standard CDP server wallet instead of Smart Wallet |
+| `GEMINI_MODEL` | Optional override for the Gemini model name (defaults to `gemini-2.0-flash`) |
 
 Do not use deprecated names like `CDP_API_KEY_NAME` or `CDP_API_PRIVATEKEY`.
 
