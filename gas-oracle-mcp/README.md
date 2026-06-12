@@ -1,5 +1,7 @@
 # AgentWire MCP
 
+`gas-oracle-mcp/` is the legacy folder path. The actual service/package name is AgentWire / `agentwire-mcp`.
+
 **Webhook inbox + web fetch for autonomous AI agents.** Agents pay USDC via [x402](https://x402.org) to use infrastructure they cannot host themselves.
 
 ## Why agents pay for this repeatedly
@@ -32,7 +34,7 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 ### 2. Deploy on Railway (free tier works for testing)
 
 1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
-2. Select this repo (no Root Directory change needed — `/railway.toml` at the repo root builds `gas-oracle-mcp/`)
+2. Select this repo (no Root Directory change needed — `/railway.toml` at the repo root builds `gas-oracle-mcp/`, but the deployed service itself is AgentWire)
 3. Open **Variables** and add:
    - `CDP_API_KEY` (API key ID)
    - `CDP_PRIVATE_KEY` (API key secret / PEM)
