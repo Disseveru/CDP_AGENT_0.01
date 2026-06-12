@@ -11,30 +11,172 @@
  * The CDP Facilitator uses that field to associate the settlement with the
  * resource and index it in the Bazaar automatically.
  */
-import { createFacilitatorConfig } from "@coinbase/x402";
-import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
+import { createAuthHeader, createCorrelationHeader } from "@coinbase/x402";
+import {
+  type FacilitatorClient,
+  HTTPFacilitatorClient,
+  x402HTTPResourceServer,
+  x402ResourceServer,
+} from "@x402/core/server";
+import type { FacilitatorConfig, RouteConfig } from "@x402/core/server";
 import type { PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import {
   bazaarResourceServerExtension,
   declareDiscoveryExtension,
+  validateBazaarRouteExtensions,
   validateDiscoveryExtensionSpec,
 } from "@x402/extensions/bazaar";
 
 import { CONFIG } from "./config.js";
 import { resolveCdpCredentials } from "./wallet.js";
 
+const CDP_X402_PLATFORM_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+const SERVICE_CARD_OUTPUT_SCHEMA = {
+  properties: {
+    service: { type: "string" },
+    version: { type: "string" },
+    status: { type: "string" },
+    tagline: { type: "string" },
+    protocol: { type: "string" },
+    endpoint: { type: "string" },
+    webhooks: { type: "string" },
+    paymentNetwork: { type: "string" },
+    facilitator: { type: "string" },
+    payTo: { type: "string" },
+    tools: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          price: { type: "string" },
+        },
+        required: ["name", "price"],
+      },
+    },
+  },
+  required: [
+    "service",
+    "version",
+    "status",
+    "tagline",
+    "protocol",
+    "endpoint",
+    "webhooks",
+    "paymentNetwork",
+    "facilitator",
+    "payTo",
+    "tools",
+  ],
+} as const;
+
+export const SERVICE_CARD_OUTPUT_EXAMPLE = {
+  service: CONFIG.serviceName,
+  version: CONFIG.serviceVersion,
+  status: "ready",
+  tagline: "Webhook inbox + web fetch for autonomous agents",
+  protocol: "MCP over Streamable HTTP + x402 v2 payments",
+  endpoint: `${CONFIG.publicUrl}/mcp`,
+  webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
+  paymentNetwork: CONFIG.caip2Network,
+  facilitator: CONFIG.facilitatorUrl,
+  payTo: "0x0000000000000000000000000000000000000000",
+  tools: [
+    { name: "create_inbox", price: "free" },
+    { name: "drain_inbox", price: CONFIG.prices.drainInbox },
+    { name: "peek_inbox", price: CONFIG.prices.peekInbox },
+    { name: "fetch_url", price: CONFIG.prices.fetchUrl },
+    { name: "ping", price: "free" },
+  ],
+} as const;
+
 /** Creates the facilitator client, attaching CDP auth headers on mainnet. */
-function createFacilitatorClient(): HTTPFacilitatorClient {
+function createFacilitatorClient(): FacilitatorClient {
   if (CONFIG.usesCdpFacilitator) {
-    const credentials = resolveCdpCredentials();
-    const facilitatorConfig = createFacilitatorConfig(
-      credentials.apiKeyId,
-      credentials.apiKeySecret,
-    );
-    return new HTTPFacilitatorClient(facilitatorConfig);
+    const facilitatorClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CONFIG.facilitatorUrl));
+    const supportedClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CDP_X402_PLATFORM_URL));
+
+    return {
+      verify: (paymentPayload, paymentRequirements) =>
+        facilitatorClient.verify(paymentPayload, paymentRequirements),
+      settle: (paymentPayload, paymentRequirements) =>
+        facilitatorClient.settle(paymentPayload, paymentRequirements),
+      getSupported: () => supportedClient.getSupported(),
+    };
   }
   return new HTTPFacilitatorClient({ url: CONFIG.facilitatorUrl });
+}
+
+function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
+  let credentials: ReturnType<typeof resolveCdpCredentials> | undefined;
+  try {
+    credentials = resolveCdpCredentials();
+  } catch (error) {
+    console.warn(
+      `[x402] CDP facilitator auth unavailable until credentials are configured: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const facilitatorUrl = new URL(url);
+  const requestHost = facilitatorUrl.host;
+  const route = facilitatorUrl.pathname.replace(/\/$/, "");
+
+  return {
+    url,
+    createAuthHeaders: async () => {
+      const correlationHeaders = {
+        "Correlation-Context": createCorrelationHeader(),
+      };
+      const headers = {
+        verify: { ...correlationHeaders },
+        settle: { ...correlationHeaders },
+        supported: { ...correlationHeaders },
+        bazaar: { ...correlationHeaders },
+      };
+
+      if (credentials) {
+        return {
+          verify: {
+            ...headers.verify,
+            Authorization: await createAuthHeader(
+              credentials.apiKeyId,
+              credentials.apiKeySecret,
+              "POST",
+              requestHost,
+              `${route}/verify`,
+            ),
+          },
+          settle: {
+            ...headers.settle,
+            Authorization: await createAuthHeader(
+              credentials.apiKeyId,
+              credentials.apiKeySecret,
+              "POST",
+              requestHost,
+              `${route}/settle`,
+            ),
+          },
+          supported: {
+            ...headers.supported,
+            Authorization: await createAuthHeader(
+              credentials.apiKeyId,
+              credentials.apiKeySecret,
+              "GET",
+              requestHost,
+              `${route}/supported`,
+            ),
+          },
+          bazaar: headers.bazaar,
+        };
+      }
+
+      return headers;
+    },
+  };
 }
 
 /**
@@ -71,6 +213,61 @@ export async function buildAccepts(
     price,
     maxTimeoutSeconds: 120,
   });
+}
+
+function rootResourceUrl(): string {
+  return `${CONFIG.publicUrl.replace(/\/$/, "")}/`;
+}
+
+export function buildDiscoveryRouteConfig(payTo: string): RouteConfig {
+  const extensions = declareDiscoveryExtension({
+    input: {},
+    inputSchema: {
+      properties: {},
+      additionalProperties: false,
+    },
+    output: {
+      example: { ...SERVICE_CARD_OUTPUT_EXAMPLE, payTo },
+      schema: SERVICE_CARD_OUTPUT_SCHEMA,
+    },
+  });
+
+  const routes = {
+    "GET /": {
+      accepts: {
+        scheme: "exact",
+        network: CONFIG.caip2Network,
+        payTo,
+        price: CONFIG.prices.discovery,
+        maxTimeoutSeconds: 300,
+      },
+      resource: rootResourceUrl(),
+      description: "AgentWire service card for webhook inbox relay and web fetch infrastructure.",
+      mimeType: "application/json",
+      serviceName: CONFIG.serviceName,
+      tags: ["webhook", "inbox", "fetch", "agent-infrastructure", "relay"],
+      unpaidResponseBody: () => ({
+        contentType: "application/json",
+        body: {},
+      }),
+      extensions,
+    },
+  } satisfies Record<string, RouteConfig>;
+
+  validateBazaarRouteExtensions(routes);
+  return routes["GET /"];
+}
+
+export async function createDiscoveryHttpServer(
+  resourceServer: x402ResourceServer,
+  payTo: string,
+): Promise<x402HTTPResourceServer> {
+  const httpServer = new x402HTTPResourceServer(resourceServer, {
+    "GET /": buildDiscoveryRouteConfig(payTo),
+  });
+
+  await httpServer.initialize();
+  return httpServer;
 }
 
 export interface ToolDiscoveryMetadata {

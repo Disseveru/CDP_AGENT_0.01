@@ -5,6 +5,7 @@
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { extractPaymentRequiredFromError } from "@x402/mcp";
 import { validateDiscoveryExtensionSpec } from "@x402/extensions/bazaar";
 
@@ -90,9 +91,27 @@ async function main(): Promise<void> {
   }
   console.log("Bazaar discovery extension OK");
 
-  console.log("\n=== 6. Service card ===");
+  console.log("\n=== 6. Discovery endpoint -> expect x402 v2 header challenge ===");
   const card = await fetch(BASE_URL);
-  console.log(await card.json());
+  if (card.status !== 402) {
+    throw new Error(`Expected discovery endpoint to return 402, got ${card.status}`);
+  }
+  const paymentRequiredHeader = card.headers.get("payment-required");
+  if (!paymentRequiredHeader) {
+    throw new Error("Missing payment-required header on discovery endpoint");
+  }
+  const discoveryPaymentRequired = decodePaymentRequiredHeader(paymentRequiredHeader);
+  const discoveryBazaar = discoveryPaymentRequired.extensions?.bazaar;
+  if (!discoveryBazaar) throw new Error("Missing bazaar extension on discovery endpoint");
+  const discoveryValidation = validateDiscoveryExtensionSpec(
+    discoveryBazaar as Record<string, unknown>,
+  );
+  if (!discoveryValidation.valid) {
+    throw new Error(`Discovery Bazaar validation failed: ${JSON.stringify(discoveryValidation.errors)}`);
+  }
+  console.log(
+    `Discovery 402 OK: ${discoveryPaymentRequired.resource.url} on ${discoveryPaymentRequired.accepts[0]?.network}`,
+  );
 
   await client.close();
   console.log("\nSMOKE TEST PASSED");

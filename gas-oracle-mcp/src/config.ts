@@ -4,7 +4,7 @@ loadEnv();
 
 export type PaymentNetwork = "base-sepolia" | "base";
 
-const NETWORK = (process.env.NETWORK || "base-sepolia") as PaymentNetwork;
+const NETWORK = (process.env.NETWORK || "base") as PaymentNetwork;
 
 if (NETWORK !== "base-sepolia" && NETWORK !== "base") {
   throw new Error(`NETWORK must be "base-sepolia" or "base", got "${NETWORK}"`);
@@ -23,11 +23,20 @@ const AGENTKIT_NETWORK_ID: Record<PaymentNetwork, string> = {
 };
 
 const DEFAULT_FACILITATOR: Record<PaymentNetwork, string> = {
-  // Free, no-auth facilitator for testnet payments.
-  "base-sepolia": "https://x402.org/facilitator",
-  // CDP facilitator: settles real USDC and indexes the service in the x402 Bazaar.
-  base: "https://api.cdp.coinbase.com/platform/v2/x402",
+  // CDP-settled endpoints are eligible for Bazaar discovery.
+  "base-sepolia": "https://api.cdp.coinbase.com/platform/v2/x402/facilitator",
+  base: "https://api.cdp.coinbase.com/platform/v2/x402/facilitator",
 };
+
+function isCdpFacilitatorUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname === "api.cdp.coinbase.com";
+  } catch {
+    return false;
+  }
+}
+
+const facilitatorUrl = process.env.FACILITATOR_URL || DEFAULT_FACILITATOR[NETWORK];
 
 /** PUBLIC_URL override, or Railway's injected domain, or local default. */
 function resolvePublicUrl(): string {
@@ -41,12 +50,13 @@ export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
   agentKitNetworkId: AGENTKIT_NETWORK_ID[NETWORK],
-  facilitatorUrl: process.env.FACILITATOR_URL || DEFAULT_FACILITATOR[NETWORK],
-  usesCdpFacilitator: !process.env.FACILITATOR_URL && NETWORK === "base",
+  facilitatorUrl,
+  usesCdpFacilitator: isCdpFacilitatorUrl(facilitatorUrl),
   port: Number(process.env.PORT || 4021),
   publicUrl: resolvePublicUrl(),
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {
+    discovery: process.env.PRICE_DISCOVERY || "$0.001",
     drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",
     peekInbox: process.env.PRICE_PEEK_INBOX || "$0.002",
     fetchUrl: process.env.PRICE_FETCH_URL || "$0.012",
