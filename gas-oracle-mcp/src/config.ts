@@ -29,6 +29,14 @@ const DEFAULT_FACILITATOR: Record<PaymentNetwork, string> = {
   base: "https://api.cdp.coinbase.com/platform/v2/x402",
 };
 
+/** PUBLIC_URL override, or Railway's injected domain, or local default. */
+function resolvePublicUrl(): string {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (railwayDomain) return `https://${railwayDomain}`;
+  return `http://localhost:${process.env.PORT || 4021}`;
+}
+
 export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
@@ -36,7 +44,7 @@ export const CONFIG = {
   facilitatorUrl: process.env.FACILITATOR_URL || DEFAULT_FACILITATOR[NETWORK],
   usesCdpFacilitator: !process.env.FACILITATOR_URL && NETWORK === "base",
   port: Number(process.env.PORT || 4021),
-  publicUrl: process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 4021}`,
+  publicUrl: resolvePublicUrl(),
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {
     gasSnapshot: process.env.PRICE_GAS_SNAPSHOT || "$0.001",
