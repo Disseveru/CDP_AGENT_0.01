@@ -41,7 +41,7 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
    - `CDP_WALLET_SECRET`
    - `NETWORK` = `base-sepolia` (testnet) or `base` (real money)
 4. **Networking** → **Generate Domain**
-5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`
+5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`. Then visit `/ready` to confirm CDP/x402 initialization completed.
 
 Your public URLs:
 - MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
