@@ -1,0 +1,12 @@
+# Railway config when deploying from the monorepo root (default GitHub import).
+# The AgentWire MCP server lives in gas-oracle-mcp/.
+
+[build]
+buildCommand = "cd gas-oracle-mcp && npm install --legacy-peer-deps && npm run build"
+watchPatterns = ["gas-oracle-mcp/**"]
+
+[deploy]
+startCommand = "node gas-oracle-mcp/dist/server.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

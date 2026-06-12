@@ -1,7 +1,7 @@
 {
-  "name": "chainpulse-gas-oracle-mcp",
+  "name": "agentwire-mcp",
   "version": "1.0.0",
-  "description": "ChainPulse: x402-paid MCP gas-optimization oracle powered by Coinbase CDP AgentKit. Sells real-time cross-chain gas intelligence to autonomous agents for USDC micro-payments.",
+  "description": "AgentWire: x402-paid MCP server. Webhook inbox relay + real web fetch for autonomous agents that cannot receive inbound HTTP or browse the web themselves.",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "@x402/mcp": "^2.14.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "graphql": "^16.11.0",
     "viem": "^2.52.2",
     "zod": "^3.25.76"
   },
