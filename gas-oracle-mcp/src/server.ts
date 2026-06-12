@@ -1,9 +1,11 @@
 /**
- * ChainPulse Preflight - x402-paid MCP server.
+ * AgentWire - x402-paid MCP server.
  *
- * Autonomous agents call these tools before signing or broadcasting transactions
- * to avoid reverts, wasted gas, and failed token transfers. Revenue lands in the
- * CDP AgentKit server wallet initialized at boot.
+ * Gives autonomous agents two things they cannot easily build themselves:
+ *  1. Inbound webhooks (Stripe, GitHub, humans → agent inbox)
+ *  2. Real web fetch (URL → clean text + content hash)
+ *
+ * Revenue lands in the CDP AgentKit wallet initialized at boot.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -14,15 +16,11 @@ import express from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
-import {
-  simulateErc20Transfer,
-  simulateTransaction,
-  SUPPORTED_CHAINS,
-} from "./preflight.js";
+import { fetchUrl } from "./fetch.js";
+import { createInbox, drainInbox, peekInbox } from "./inbox.js";
+import { appendEvent, inboxExists } from "./store.js";
 import { buildAccepts, buildDiscoveryExtension, createResourceServer } from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
-
-const chainEnum = z.enum([...SUPPORTED_CHAINS] as [string, ...string[]]);
 
 interface PaidToolDefinition {
   name: string;
@@ -37,100 +35,88 @@ interface PaidToolDefinition {
 
 const TOOL_DEFINITIONS: PaidToolDefinition[] = [
   {
-    name: "simulate_transaction",
+    name: "drain_inbox",
     description:
-      `Dry-run any EVM transaction against live chain state before signing. Returns willSucceed, exact gas estimate, decoded revert reason, and balance warnings. Supports ${SUPPORTED_CHAINS.join(", ")}. Costs ${CONFIG.prices.simulateTransaction} USDC per call. Call this before every on-chain action.`,
-    price: CONFIG.prices.simulateTransaction,
+      `Pull all pending webhook events from your AgentWire inbox and clear the queue. ` +
+      `Use this in your agent loop to receive Stripe payments, GitHub PR events, form submissions, ` +
+      `or human replies. Costs ${CONFIG.prices.drainInbox} USDC per call.`,
+    price: CONFIG.prices.drainInbox,
     zodShape: {
-      chain: chainEnum.describe(`Chain to simulate on. One of: ${SUPPORTED_CHAINS.join(", ")}`),
-      from: z.string().describe("Sender address (0x...)"),
-      to: z.string().describe("Target contract or recipient (0x...)"),
-      data: z
-        .string()
-        .optional()
-        .describe("Calldata hex (0x...). Omit or use 0x for plain ETH transfers."),
-      value: z
-        .string()
-        .optional()
-        .describe("Value in wei as a decimal string. Defaults to 0."),
+      inboxId: z.string().describe("Inbox ID returned by create_inbox"),
+      secret: z.string().describe("Inbox secret returned by create_inbox — never share publicly"),
     },
     jsonSchema: {
       type: "object",
       properties: {
-        chain: { type: "string", enum: [...SUPPORTED_CHAINS] },
-        from: { type: "string", description: "Sender address" },
-        to: { type: "string", description: "Target address" },
-        data: { type: "string", description: "Calldata hex" },
-        value: { type: "string", description: "Value in wei" },
+        inboxId: { type: "string" },
+        secret: { type: "string" },
       },
-      required: ["chain", "from", "to"],
+      required: ["inboxId", "secret"],
     },
-    example: {
-      chain: "base-sepolia",
-      from: "0x0000000000000000000000000000000000000001",
-      to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      data: "0x",
-      value: "0",
-    },
+    example: { inboxId: "abc123", secret: "your-secret-here" },
     outputExample: {
-      willSucceed: true,
-      gasEstimate: "65000",
-      estimatedFeeEth: "0.000325",
-      revertReason: null,
-      warnings: [],
+      drained: 2,
+      events: [{ id: "ev1", receivedAt: "2026-06-12T00:00:00.000Z", body: { type: "payment" } }],
     },
     handler: async (args) =>
-      simulateTransaction({
-        chain: String(args.chain) as (typeof SUPPORTED_CHAINS)[number],
-        from: String(args.from),
-        to: String(args.to),
-        data: args.data != null ? String(args.data) : undefined,
-        value: args.value != null ? String(args.value) : undefined,
-      }),
+      drainInbox({ inboxId: String(args.inboxId), secret: String(args.secret) }),
   },
   {
-    name: "simulate_erc20_transfer",
+    name: "peek_inbox",
     description:
-      `Dry-run an ERC-20 transfer before signing. Checks token balance, simulates transfer() on live state, and returns revert reasons for honeypots, pauses, or blacklists. Supports ${SUPPORTED_CHAINS.join(", ")}. Costs ${CONFIG.prices.simulateErc20Transfer} USDC per call.`,
-    price: CONFIG.prices.simulateErc20Transfer,
+      `Read pending webhook events without clearing the queue. ` +
+      `Costs ${CONFIG.prices.peekInbox} USDC per call.`,
+    price: CONFIG.prices.peekInbox,
     zodShape: {
-      chain: chainEnum.describe(`Chain to simulate on. One of: ${SUPPORTED_CHAINS.join(", ")}`),
-      token: z.string().describe("ERC-20 token contract address (0x...)"),
-      from: z.string().describe("Sender/token holder address (0x...)"),
-      to: z.string().describe("Recipient address (0x...)"),
-      amount: z.string().describe('Human-readable amount, e.g. "10.5" (uses token decimals)'),
+      inboxId: z.string().describe("Inbox ID returned by create_inbox"),
+      secret: z.string().describe("Inbox secret returned by create_inbox"),
     },
     jsonSchema: {
       type: "object",
       properties: {
-        chain: { type: "string", enum: [...SUPPORTED_CHAINS] },
-        token: { type: "string" },
-        from: { type: "string" },
-        to: { type: "string" },
-        amount: { type: "string" },
+        inboxId: { type: "string" },
+        secret: { type: "string" },
       },
-      required: ["chain", "token", "from", "to", "amount"],
+      required: ["inboxId", "secret"],
     },
-    example: {
-      chain: "base-sepolia",
-      token: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      from: "0x0000000000000000000000000000000000000001",
-      to: "0x0000000000000000000000000000000000000002",
-      amount: "1.0",
+    example: { inboxId: "abc123", secret: "your-secret-here" },
+    outputExample: { pending: 1, events: [] },
+    handler: async (args) =>
+      peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) }),
+  },
+  {
+    name: "fetch_url",
+    description:
+      `Fetch a public web page or API and return agent-readable text plus a SHA-256 content hash. ` +
+      `Use for research, monitoring, reading docs, or verifying what a URL contained at fetch time. ` +
+      `Costs ${CONFIG.prices.fetchUrl} USDC per call.`,
+    price: CONFIG.prices.fetchUrl,
+    zodShape: {
+      url: z.string().url().describe("Public http(s) URL to fetch"),
+      headers: z
+        .record(z.string())
+        .optional()
+        .describe('Optional request headers, e.g. {"Accept-Language":"en-US"}'),
     },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL" },
+        headers: { type: "object", additionalProperties: { type: "string" } },
+      },
+      required: ["url"],
+    },
+    example: { url: "https://example.com" },
     outputExample: {
-      willSucceed: false,
-      symbol: "USDC",
-      revertReason: "ERC20: transfer amount exceeds balance",
-      warnings: ["Insufficient USDC balance: have 0.0, need 1.0."],
+      status: 200,
+      title: "Example Domain",
+      text: "Example Domain This domain is for use in illustrative examples...",
+      contentSha256: "abc123...",
     },
     handler: async (args) =>
-      simulateErc20Transfer({
-        chain: String(args.chain) as (typeof SUPPORTED_CHAINS)[number],
-        token: String(args.token),
-        from: String(args.from),
-        to: String(args.to),
-        amount: String(args.amount),
+      fetchUrl({
+        url: String(args.url),
+        headers: args.headers as Record<string, string> | undefined,
       }),
   },
 ];
@@ -174,18 +160,15 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
         description: definition.description,
         mimeType: "application/json",
         serviceName: CONFIG.serviceName,
-        tags: ["preflight", "simulation", "evm", "safety", "transaction"],
+        tags: ["webhook", "inbox", "fetch", "agent-infrastructure", "relay"],
       },
       extensions,
       hooks: {
         onBeforeExecution: async () => {
-          console.log(`[x402] Payment verified for ${definition.name}, executing tool...`);
-        },
-        onAfterExecution: async () => {
-          console.log(`[x402] ${definition.name} executed, settling payment...`);
+          console.log(`[x402] Payment verified for ${definition.name}, executing...`);
         },
         onAfterSettlement: async ({ settlement }) => {
-          console.log(`[x402] Settled ${definition.name} payment tx=${settlement.transaction}`);
+          console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
         },
       },
     });
@@ -195,12 +178,24 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
       definition.description,
       definition.zodShape,
       paid(async (args) => ({
-        content: [{ type: "text" as const, text: JSON.stringify(await definition.handler(args), null, 2) }],
+        content: [
+          { type: "text" as const, text: JSON.stringify(await definition.handler(args), null, 2) },
+        ],
       })),
     );
   }
 
-  mcpServer.tool("ping", "Free health check. Returns service status and payment metadata.", {}, async () => ({
+  // Free: agents need an inbox before they can pay to drain it.
+  mcpServer.tool(
+    "create_inbox",
+    "Create a free webhook inbox. Returns inboxId, secret, and webhookUrl. POST any JSON to webhookUrl; drain_inbox pulls events into your agent.",
+    {},
+    async () => ({
+      content: [{ type: "text" as const, text: JSON.stringify(createInbox(), null, 2) }],
+    }),
+  );
+
+  mcpServer.tool("ping", "Free health check. Returns service status and pricing.", {}, async () => ({
     content: [
       {
         type: "text" as const,
@@ -208,6 +203,7 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
           status: "ok",
           service: CONFIG.serviceName,
           paymentNetwork: CONFIG.caip2Network,
+          freeTools: ["create_inbox", "ping"],
           paidTools: tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
         }),
       },
@@ -225,7 +221,43 @@ async function main(): Promise<void> {
   const tools = await prepareTools(resourceServer, identity.address);
 
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "1mb" }));
+  app.use(express.text({ type: ["text/*", "application/xml"], limit: "1mb" }));
+
+  // Inbound webhook relay — external services POST here, agents drain via MCP.
+  app.all("/hooks/:inboxId", (req, res) => {
+    const { inboxId } = req.params;
+    if (!inboxExists(inboxId)) {
+      res.status(404).json({ error: "Unknown inbox" });
+      return;
+    }
+
+    try {
+      const body =
+        req.body === undefined || req.body === ""
+          ? null
+          : typeof req.body === "string"
+            ? req.body
+            : req.body;
+
+      const event = appendEvent(inboxId, {
+        method: req.method,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v ?? "")]),
+        ),
+        query: Object.fromEntries(
+          Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v ?? "")]),
+        ),
+        body,
+      });
+
+      console.log(`[hook] ${req.method} inbox=${inboxId} event=${event.id}`);
+      res.status(202).json({ accepted: true, eventId: event.id, receivedAt: event.receivedAt });
+    } catch (error) {
+      console.error("[hook] Error:", error);
+      res.status(500).json({ error: "Failed to store event" });
+    }
+  });
 
   app.post("/mcp", async (req, res) => {
     try {
@@ -261,12 +293,15 @@ async function main(): Promise<void> {
     res.json({
       service: CONFIG.serviceName,
       version: CONFIG.serviceVersion,
+      tagline: "Webhook inbox + web fetch for autonomous agents",
       protocol: "MCP over Streamable HTTP + x402 v2 payments",
       endpoint: `${CONFIG.publicUrl}/mcp`,
+      webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
       paymentNetwork: CONFIG.caip2Network,
       facilitator: CONFIG.facilitatorUrl,
       payTo: identity.address,
       tools: [
+        { name: "create_inbox", price: "free" },
         ...tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
         { name: "ping", price: "free" },
       ],
@@ -274,14 +309,17 @@ async function main(): Promise<void> {
   });
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", payTo: identity.address, network: CONFIG.caip2Network });
+    res.json({ status: "ok", service: CONFIG.serviceName, payTo: identity.address, network: CONFIG.caip2Network });
   });
 
   app.listen(CONFIG.port, () => {
-    console.log(`[boot] ChainPulse Preflight listening on port ${CONFIG.port}`);
-    console.log(`[boot] MCP endpoint:  ${CONFIG.publicUrl}/mcp`);
-    console.log(`[boot] Revenue wallet (payTo): ${identity.address}`);
-    console.log(`[boot] Paid tools: ${tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`);
+    console.log(`[boot] AgentWire listening on port ${CONFIG.port}`);
+    console.log(`[boot] MCP endpoint:     ${CONFIG.publicUrl}/mcp`);
+    console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
+    console.log(`[boot] Revenue wallet:   ${identity.address}`);
+    console.log(
+      `[boot] Paid tools: ${tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`,
+    );
   });
 }
 

@@ -1,7 +1,7 @@
 {
-  "name": "chainpulse-preflight-mcp",
-  "version": "2.0.0",
-  "description": "ChainPulse Preflight: x402-paid MCP transaction simulation service. Agents pay USDC to dry-run transactions and ERC-20 transfers before signing, avoiding reverts and wasted gas.",
+  "name": "agentwire-mcp",
+  "version": "1.0.0",
+  "description": "AgentWire: x402-paid MCP server. Webhook inbox relay + real web fetch for autonomous agents that cannot receive inbound HTTP or browse the web themselves.",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

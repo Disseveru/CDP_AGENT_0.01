@@ -47,9 +47,10 @@ export const CONFIG = {
   publicUrl: resolvePublicUrl(),
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {
-    simulateTransaction: process.env.PRICE_SIMULATE_TX || "$0.01",
-    simulateErc20Transfer: process.env.PRICE_SIMULATE_ERC20 || "$0.008",
+    drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",
+    peekInbox: process.env.PRICE_PEEK_INBOX || "$0.002",
+    fetchUrl: process.env.PRICE_FETCH_URL || "$0.012",
   },
-  serviceName: "ChainPulse Preflight",
-  serviceVersion: "2.0.0",
+  serviceName: "AgentWire",
+  serviceVersion: "1.0.0",
 } as const;

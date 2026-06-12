@@ -1,64 +1,82 @@
-# ChainPulse Preflight
+# AgentWire MCP
 
-A paid MCP server that **simulates EVM transactions before agents sign them**. Autonomous agents pay USDC micro-payments via **x402** to dry-run calls against live chain state — avoiding reverts, wasted gas, and bad token transfers.
+**Webhook inbox + web fetch for autonomous AI agents.** Agents pay USDC via [x402](https://x402.org) to use infrastructure they cannot host themselves.
 
-**Why agents pay repeatedly:** every on-chain action should be preflighted. One failed mainnet transaction can cost far more than $0.01 in gas. Agents call `simulate_transaction` before swaps, mints, and contract calls, and `simulate_erc20_transfer` before every token send.
+## Why agents pay for this repeatedly
 
-## What it sells
+| Problem | AgentWire solution |
+|---|---|
+| Agents can't receive inbound HTTP (Stripe, GitHub, human replies) | **Webhook inbox** — POST events in, `drain_inbox` pulls them into the agent loop |
+| Agents can't browse the web reliably | **`fetch_url`** — returns clean text + SHA-256 content hash from any public URL |
 
-| Tool | Price | What the buyer gets |
+This is real infrastructure, not a demo. Every agent loop that waits for external input will call `drain_inbox` over and over.
+
+## Tools
+
+| Tool | Price | What it does |
 |---|---|---|
-| `simulate_transaction` | $0.01 | Dry-run any tx (from, to, calldata, value). Returns `willSucceed`, exact gas estimate, revert reason, balance warnings. |
-| `simulate_erc20_transfer` | $0.008 | Dry-run an ERC-20 `transfer()` with balance checks and revert decoding (honeypots, pauses, blacklists). |
-| `ping` | free | Health check and price list |
+| `create_inbox` | **free** | Creates `{ inboxId, secret, webhookUrl }` |
+| `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
+| `peek_inbox` | $0.002 | Read events without clearing |
+| `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
+| `ping` | **free** | Health check |
 
-Supported chains: **Base**, **Base Sepolia**, **Ethereum**, **Arbitrum**, **Optimism**.
+## Deploy in 10 minutes (no coding — works from your phone)
 
-## Architecture
+### 1. Get CDP keys (one time)
 
-- `src/server.ts` — Express + MCP Streamable HTTP at `/mcp`; x402 payment wrapper per tool
-- `src/preflight.ts` — simulation engine (viem `eth_call`, `estimateGas`, `simulateContract`)
-- `src/wallet.ts` — CDP AgentKit revenue wallet (`payTo`)
-- `src/payments.ts` — x402 facilitator + Bazaar v2 discovery metadata
+1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) on your phone browser
+2. Create an **API key** → copy **API key ID** + **secret**
+3. Go to **Wallet Secret** → create and copy it
 
-On testnet (`base-sepolia`) payments settle via the free `x402.org` facilitator. On mainnet (`base`) they settle via the **CDP Facilitator** and auto-index into the **x402 Bazaar** after the first sale.
+### 2. Deploy on Railway (free tier works for testing)
 
-## Quick start
+1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
+2. Select this repo
+3. Open service **Settings**:
+   - **Root Directory**: `gas-oracle-mcp`
+   - **Config file**: `/gas-oracle-mcp/railway.toml`
+4. Open **Variables** and add:
+   - `CDP_API_KEY` (API key ID)
+   - `CDP_PRIVATE_KEY` (API key secret / PEM)
+   - `CDP_WALLET_SECRET`
+   - `NETWORK` = `base-sepolia` (testnet) or `base` (real money)
+5. **Networking** → **Generate Domain**
+6. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`
+
+Your public URLs:
+- MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
+- Webhooks: `https://YOUR-DOMAIN.up.railway.app/hooks/{inboxId}`
+
+### 3. Go live on mainnet (real USDC)
+
+Change `NETWORK=base` in Railway variables and redeploy. After the first paid call, your service auto-lists in the **x402 Bazaar** where buyer agents discover it.
+
+## How it works (agent workflow)
+
+```
+1. Agent calls create_inbox (free)
+   → gets webhookUrl like https://your-app.up.railway.app/hooks/abc123
+
+2. You configure Stripe/GitHub/a form to POST to that URL
+
+3. Agent loop calls drain_inbox (paid, $0.005)
+   → receives all pending events as JSON
+
+4. Agent calls fetch_url (paid, $0.012) when it needs web content
+```
+
+## Test locally (if you have a laptop later)
 
 ```bash
 cd gas-oracle-mcp
 npm install --legacy-peer-deps
-cp .env.example .env    # paste CDP_API_KEY, CDP_PRIVATE_KEY, CDP_WALLET_SECRET
+cp .env.example .env   # paste your 3 CDP keys
 npm start
+npm run smoke-test     # free
+npm run paid-test      # settles real testnet USDC
 ```
 
-The server prints your **revenue wallet** (`payTo`) on boot.
+## Revenue
 
-### Test
-
-```bash
-npm run smoke-test     # free: tool listing + 402 challenge + Bazaar metadata
-npm run paid-test      # E2E: two real testnet USDC settlements
-```
-
-### Go live on mainnet
-
-Set `NETWORK=base` in `.env` and restart. Payments settle in real USDC.
-
-### Deploy on Railway
-
-Set **Root Directory** to `gas-oracle-mcp`, config file to `/gas-oracle-mcp/railway.toml`, add CDP env vars, generate a public domain.
-
-## How buyer agents connect
-
-Point an MCP client at `POST /mcp` and wrap with `@x402/mcp`'s `wrapMCPClientWithPayment`. See `scripts/paid-client-test.ts` for a working buyer.
-
-Typical agent loop:
-
-1. Build unsigned transaction
-2. Call `simulate_transaction` → if `willSucceed`, proceed; else adjust params
-3. Sign and broadcast only after preflight passes
-
-## Environment variables
-
-See `.env.example` for the full list.
+Every paid tool call settles USDC to your CDP wallet (`payTo` address printed on boot). On testnet it's fake USDC; on mainnet it's real.
