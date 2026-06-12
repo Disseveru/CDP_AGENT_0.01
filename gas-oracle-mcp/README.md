@@ -32,17 +32,14 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 ### 2. Deploy on Railway (free tier works for testing)
 
 1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
-2. Select this repo
-3. Open service **Settings**:
-   - **Root Directory**: `gas-oracle-mcp`
-   - **Config file**: `/gas-oracle-mcp/railway.toml`
-4. Open **Variables** and add:
+2. Select this repo (no Root Directory change needed — `/railway.toml` at the repo root builds `gas-oracle-mcp/`)
+3. Open **Variables** and add:
    - `CDP_API_KEY` (API key ID)
    - `CDP_PRIVATE_KEY` (API key secret / PEM)
    - `CDP_WALLET_SECRET`
    - `NETWORK` = `base-sepolia` (testnet) or `base` (real money)
-5. **Networking** → **Generate Domain**
-6. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`
+4. **Networking** → **Generate Domain**
+5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`
 
 Your public URLs:
 - MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
