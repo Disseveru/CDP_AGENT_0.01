@@ -40,10 +40,10 @@ const SERVICE_CARD_OUTPUT_SCHEMA = {
     status: { type: "string" },
     tagline: { type: "string" },
     protocol: { type: "string" },
-    endpoint: { type: "string", format: "uri" },
+    endpoint: { type: "string" },
     webhooks: { type: "string" },
     paymentNetwork: { type: "string" },
-    facilitator: { type: "string", format: "uri" },
+    facilitator: { type: "string" },
     payTo: { type: "string" },
     tools: {
       type: "array",
