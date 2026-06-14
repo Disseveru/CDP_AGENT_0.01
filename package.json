@@ -34,6 +34,7 @@
     "@langchain/core": "^1.1.48",
     "dotenv": "^17.4.2",
     "dsa-connect": "^0.7.52",
+    "graphql": "^16.14.2",
     "web3": "^1.10.4"
   },
   "overrides": {
