@@ -112,7 +112,7 @@ function createFacilitatorClient(): FacilitatorClient {
 export function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
   let credentials: ReturnType<typeof resolveCdpCredentials> | undefined;
 
-  if (CONFIG.payToOverride) {
+  if (CONFIG.payToOverride && !CONFIG.usesCdpFacilitator) {
     console.log("[x402] PAY_TO_ADDRESS set; skipping CDP facilitator auth headers.");
   } else {
     try {
