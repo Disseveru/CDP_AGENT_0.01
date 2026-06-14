@@ -73,6 +73,9 @@ web_modules/
 # CDP AgentKit local wallet persistence (contains sensitive wallet data)
 wallet_data.txt
 
+# Instadapp DSA session state (contains DSA id + signer address)
+dsa_data.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
