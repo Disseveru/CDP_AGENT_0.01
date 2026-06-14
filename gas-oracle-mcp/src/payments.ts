@@ -109,16 +109,21 @@ function createFacilitatorClient(): FacilitatorClient {
   return new HTTPFacilitatorClient({ url: CONFIG.facilitatorUrl });
 }
 
-function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
+export function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
   let credentials: ReturnType<typeof resolveCdpCredentials> | undefined;
-  try {
-    credentials = resolveCdpCredentials();
-  } catch (error) {
-    console.warn(
-      `[x402] CDP facilitator auth unavailable until credentials are configured: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+
+  if (CONFIG.payToOverride) {
+    console.log("[x402] PAY_TO_ADDRESS set; skipping CDP facilitator auth headers.");
+  } else {
+    try {
+      credentials = resolveCdpCredentials();
+    } catch (error) {
+      console.warn(
+        `[x402] CDP facilitator auth unavailable until credentials are configured: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   const facilitatorUrl = new URL(url);
@@ -139,39 +144,47 @@ function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
       };
 
       if (credentials) {
-        return {
-          verify: {
-            ...headers.verify,
-            Authorization: await createAuthHeader(
-              credentials.apiKeyId,
-              credentials.apiKeySecret,
-              "POST",
-              requestHost,
-              `${route}/verify`,
-            ),
-          },
-          settle: {
-            ...headers.settle,
-            Authorization: await createAuthHeader(
-              credentials.apiKeyId,
-              credentials.apiKeySecret,
-              "POST",
-              requestHost,
-              `${route}/settle`,
-            ),
-          },
-          supported: {
-            ...headers.supported,
-            Authorization: await createAuthHeader(
-              credentials.apiKeyId,
-              credentials.apiKeySecret,
-              "GET",
-              requestHost,
-              `${route}/supported`,
-            ),
-          },
-          bazaar: headers.bazaar,
-        };
+        try {
+          return {
+            verify: {
+              ...headers.verify,
+              Authorization: await createAuthHeader(
+                credentials.apiKeyId,
+                credentials.apiKeySecret,
+                "POST",
+                requestHost,
+                `${route}/verify`,
+              ),
+            },
+            settle: {
+              ...headers.settle,
+              Authorization: await createAuthHeader(
+                credentials.apiKeyId,
+                credentials.apiKeySecret,
+                "POST",
+                requestHost,
+                `${route}/settle`,
+              ),
+            },
+            supported: {
+              ...headers.supported,
+              Authorization: await createAuthHeader(
+                credentials.apiKeyId,
+                credentials.apiKeySecret,
+                "GET",
+                requestHost,
+                `${route}/supported`,
+              ),
+            },
+            bazaar: headers.bazaar,
+          };
+        } catch (error) {
+          console.warn(
+            `[x402] CDP facilitator auth disabled for this request: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
       }
 
       return headers;

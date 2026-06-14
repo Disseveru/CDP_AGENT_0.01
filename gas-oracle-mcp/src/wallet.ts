@@ -30,12 +30,22 @@ function resolveEnvAlias(primaryName: string, fallbackName: string): string | un
 
 function stripWrappingQuotes(secret: string): string {
   const trimmed = secret.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "string") {
+        return parsed.trim();
+      }
+    } catch {
+      // Fall back to trimming the wrapping quotes only.
+    }
     return trimmed.slice(1, -1).trim();
   }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+
   return trimmed;
 }
 

@@ -176,3 +176,69 @@ test("PAY_TO_ADDRESS bypasses malformed CDP keys during wallet initialization", 
   assert.equal(identity.address, FIXED_PAY_TO_ADDRESS);
   assert.equal(identity.agentKit, null);
 });
+
+test("PAY_TO_ADDRESS disables CDP facilitator auth when keys are malformed", { concurrency: false }, () => {
+  const script = `
+    process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
+    process.env.CDP_API_KEY = "broken-key-id";
+    process.env.CDP_PRIVATE_KEY = "'not-a-real-private-key'";
+    process.env.CDP_WALLET_SECRET = "wallet-secret";
+
+    const { createCdpFacilitatorConfig } = await import("./src/payments.ts");
+    const config = createCdpFacilitatorConfig("https://api.cdp.coinbase.com/platform/v2/x402/facilitator");
+    const headers = await config.createAuthHeaders?.();
+    console.log(JSON.stringify(headers));
+  `;
+
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "-e", script],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(
+    result.status,
+    0,
+    `child process failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+
+  const headers = JSON.parse(result.stdout.trim().split("\n").at(-1) || "{}") as Record<
+    string,
+    Record<string, string>
+  >;
+
+  assert.equal(headers.verify?.Authorization, undefined);
+  assert.equal(headers.settle?.Authorization, undefined);
+  assert.equal(headers.supported?.Authorization, undefined);
+});
+
+test("PAY_TO_ADDRESS defaults to the permissionless facilitator when none is configured", {
+  concurrency: false,
+}, () => {
+  const script = `
+    process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
+    delete process.env.FACILITATOR_URL;
+
+    const { CONFIG } = await import("./src/config.ts");
+    console.log(CONFIG.facilitatorUrl);
+  `;
+
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "-e", script],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(
+    result.status,
+    0,
+    `child process failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  assert.equal(result.stdout.trim().split("\n").at(-1), "https://facilitator.xpay.sh");
+});
