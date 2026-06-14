@@ -7,7 +7,9 @@
     "start": "node index.js",
     "build": "cd gas-oracle-mcp && npm install --legacy-peer-deps && npm run build",
     "start:mcp": "node gas-oracle-mcp/dist/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "skills:install": "npx skills add coinbase/agentic-wallet-skills --agent cursor -y",
+    "skills:update": "npx skills update agentic-wallet -y",
+    "test": "node --test index.test.js"
   },
   "repository": {
     "type": "git",

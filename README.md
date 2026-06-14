@@ -9,6 +9,8 @@ Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (S
 
 Both projects share the same set of Coinbase CDP credentials.
 
+This repo also ships the Coinbase [**agentic-wallet**](https://github.com/coinbase/agentic-wallet-skills) Cursor skill (`.agents/skills/agentic-wallet/`). It complements the CDP AgentKit CLI by routing agents through the [`awal`](https://www.npmjs.com/package/awal) CLI for sign-in, balances, sends, trades, funding, x402 paid APIs, and onchain queries.
+
 ---
 
 ## Prerequisites
@@ -47,6 +49,24 @@ Create a `.env` in the project root (gitignored). The root agent and the subproj
 ### Optional (`gas-oracle-mcp/`)
 
 See `gas-oracle-mcp/.env.example` for the annotated list: `NETWORK`, `PAY_TO_ADDRESS`, `FACILITATOR_URL`, `PRICE_DRAIN_INBOX`, `PRICE_PEEK_INBOX`, `PRICE_FETCH_URL`, `PORT`, `PUBLIC_URL`.
+
+---
+
+## Agentic Wallet skill (Cursor)
+
+Install or refresh the bundled Coinbase agent skill:
+
+```bash
+npm run skills:install
+```
+
+That copies [`coinbase/agentic-wallet-skills`](https://github.com/coinbase/agentic-wallet-skills) into `.agents/skills/agentic-wallet/` for Cursor. After install, agents can use `npx awal@2.10.0` commands for wallet auth, transfers, trades, funding, and x402 flows. See `.agents/skills/agentic-wallet/SKILL.md` for the full routing table.
+
+To update later:
+
+```bash
+npm run skills:update
+```
 
 ---
 
@@ -161,6 +181,8 @@ railway mcp install --agent cursor   # merges into ~/.cursor/mcp.json if you pre
 
 ```
 .
+├── .agents/skills/       Cursor agent skills (agentic-wallet from Coinbase)
+├── skills-lock.json      Pinned skill versions for `npx skills experimental_install`
 ├── index.js              Root CLI agent (CommonJS, Node 20+)
 ├── package.json
 ├── gas-oracle-mcp/       Paid MCP server subproject (TypeScript, ESM)
