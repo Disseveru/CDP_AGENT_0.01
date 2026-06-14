@@ -28,6 +28,91 @@ function resolveEnvAlias(primaryName: string, fallbackName: string): string | un
   return process.env[primaryName] || process.env[fallbackName];
 }
 
+function stripWrappingQuotes(secret: string): string {
+  const trimmed = secret.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function rebuildSingleLinePem(secret: string): string | undefined {
+  const match = secret.match(/-----BEGIN ([^-]+)-----(.*?)-----END \1-----/);
+  if (!match) {
+    return undefined;
+  }
+
+  const [, type, body] = match;
+  const lines = body.replace(/\s+/g, "").match(/.{1,64}/g) || [];
+  return `-----BEGIN ${type}-----\n${lines.join("\n")}\n-----END ${type}-----`;
+}
+
+function decodeBase64DerPrivateKey(secret: string): string | undefined {
+  const compact = secret.replace(/\s+/g, "");
+  if (!compact || /[^A-Za-z0-9+/=]/.test(compact)) {
+    return undefined;
+  }
+
+  let der: Buffer;
+  try {
+    der = Buffer.from(compact, "base64");
+  } catch {
+    return undefined;
+  }
+
+  if (der.length === 0 || der.toString("base64").replace(/=+$/, "") !== compact.replace(/=+$/, "")) {
+    return undefined;
+  }
+
+  for (const type of ["pkcs8", "sec1"] as const) {
+    try {
+      return crypto
+        .createPrivateKey({ key: der, format: "der", type })
+        .export({ format: "pem", type: "pkcs8" })
+        .toString();
+    } catch {
+      // Try the next encoding candidate.
+    }
+  }
+
+  return undefined;
+}
+
+function normalizePrivateKeySecret(rawSecret: string): string {
+  let secret = stripWrappingQuotes(rawSecret).replace(/\\n/g, "\n").trim();
+
+  if (!secret.includes("\n")) {
+    secret = rebuildSingleLinePem(secret) ?? secret;
+  }
+
+  if (!secret.includes("BEGIN ")) {
+    return decodeBase64DerPrivateKey(secret) ?? secret;
+  }
+
+  return secret;
+}
+
+function canonicalizePrivateKeySecret(secret: string): string {
+  if (secret.includes("BEGIN EC PRIVATE KEY")) {
+    return crypto
+      .createPrivateKey({ key: secret, format: "pem", type: "sec1" })
+      .export({ format: "pem", type: "pkcs8" })
+      .toString();
+  }
+
+  if (secret.includes("BEGIN PRIVATE KEY")) {
+    return crypto
+      .createPrivateKey({ key: secret, format: "pem", type: "pkcs8" })
+      .export({ format: "pem", type: "pkcs8" })
+      .toString();
+  }
+
+  return secret;
+}
+
 /**
  * Reads CDP credentials from the environment, normalizing single-line PEM
  * secrets (as injected by most cloud secret managers) into valid multi-line
@@ -44,22 +129,8 @@ export function resolveCdpCredentials(): CdpCredentials {
     );
   }
 
-  let pem = rawSecret.replace(/\\n/g, "\n").trim();
-  if (!pem.includes("\n")) {
-    const match = pem.match(/-----BEGIN ([^-]+)-----(.*?)-----END \1-----/);
-    if (match) {
-      const [, type, body] = match;
-      const lines = body.replace(/\s+/g, "").match(/.{1,64}/g) || [];
-      pem = `-----BEGIN ${type}-----\n${lines.join("\n")}\n-----END ${type}-----`;
-    }
-  }
-
-  const apiKeySecret = pem.includes("BEGIN EC PRIVATE KEY")
-    ? crypto
-        .createPrivateKey({ key: pem, format: "pem", type: "sec1" })
-        .export({ format: "pem", type: "pkcs8" })
-        .toString()
-    : pem;
+  const normalizedSecret = normalizePrivateKeySecret(rawSecret);
+  const apiKeySecret = canonicalizePrivateKeySecret(normalizedSecret);
 
   return { apiKeyId, apiKeySecret, walletSecret };
 }

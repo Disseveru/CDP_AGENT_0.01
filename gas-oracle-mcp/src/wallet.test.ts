@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { resolveCdpCredentials } from "./wallet.js";
+
+const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const FIXED_PAY_TO_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189";
 
 function withEnv(overrides: Record<string, string | undefined>, run: () => void): void {
   const previous = new Map<string, string | undefined>();
@@ -27,40 +34,145 @@ function withEnv(overrides: Record<string, string | undefined>, run: () => void)
   }
 }
 
+function generatePrivateKeys(): { pkcs8Pem: string; pkcs8DerBase64: string; sec1Pem: string } {
+  const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  return {
+    pkcs8Pem: privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+    pkcs8DerBase64: privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+    sec1Pem: privateKey.export({ format: "pem", type: "sec1" }).toString(),
+  };
+}
+
+function assertPkcs8Pem(secret: string): void {
+  assert.match(secret, /BEGIN PRIVATE KEY/);
+  assert.doesNotThrow(() => crypto.createPrivateKey({ key: secret, format: "pem", type: "pkcs8" }));
+}
+
 test("resolveCdpCredentials accepts standard CDP SDK alias names", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
   withEnv(
     {
       CDP_API_KEY: undefined,
       CDP_PRIVATE_KEY: undefined,
       CDP_API_KEY_ID: "alias-key-id",
-      CDP_API_KEY_SECRET: "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----",
+      CDP_API_KEY_SECRET: pkcs8Pem.replace(/\n/g, "\\n"),
       CDP_WALLET_SECRET: "wallet-secret",
     },
     () => {
-      assert.deepEqual(resolveCdpCredentials(), {
-        apiKeyId: "alias-key-id",
-        apiKeySecret: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
-        walletSecret: "wallet-secret",
-      });
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "alias-key-id");
+      assert.equal(credentials.walletSecret, "wallet-secret");
+      assertPkcs8Pem(credentials.apiKeySecret);
     },
   );
 });
 
 test("resolveCdpCredentials keeps canonical variable support", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
   withEnv(
     {
       CDP_API_KEY: "primary-key-id",
-      CDP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nxyz\\n-----END PRIVATE KEY-----",
+      CDP_PRIVATE_KEY: pkcs8Pem.replace(/\n/g, "\\n"),
       CDP_API_KEY_ID: undefined,
       CDP_API_KEY_SECRET: undefined,
       CDP_WALLET_SECRET: "wallet-secret",
     },
     () => {
-      assert.deepEqual(resolveCdpCredentials(), {
-        apiKeyId: "primary-key-id",
-        apiKeySecret: "-----BEGIN PRIVATE KEY-----\nxyz\n-----END PRIVATE KEY-----",
-        walletSecret: "wallet-secret",
-      });
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "primary-key-id");
+      assert.equal(credentials.walletSecret, "wallet-secret");
+      assertPkcs8Pem(credentials.apiKeySecret);
     },
   );
+});
+
+test("resolveCdpCredentials strips wrapping quotes around escaped PEM secrets", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: undefined,
+      CDP_PRIVATE_KEY: undefined,
+      CDP_API_KEY_ID: "quoted-key-id",
+      CDP_API_KEY_SECRET: JSON.stringify(pkcs8Pem.replace(/\n/g, "\\n")),
+      CDP_WALLET_SECRET: "wallet-secret",
+    },
+    () => {
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "quoted-key-id");
+      assertPkcs8Pem(credentials.apiKeySecret);
+    },
+  );
+});
+
+test("resolveCdpCredentials accepts base64 DER secrets without PEM wrappers", { concurrency: false }, () => {
+  const { pkcs8DerBase64 } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: "der-key-id",
+      CDP_PRIVATE_KEY: pkcs8DerBase64,
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+      CDP_WALLET_SECRET: "wallet-secret",
+    },
+    () => {
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "der-key-id");
+      assertPkcs8Pem(credentials.apiKeySecret);
+    },
+  );
+});
+
+test("resolveCdpCredentials converts SEC1 EC keys to PKCS8", { concurrency: false }, () => {
+  const { sec1Pem } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: "sec1-key-id",
+      CDP_PRIVATE_KEY: sec1Pem.replace(/\n/g, "\\n"),
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+      CDP_WALLET_SECRET: "wallet-secret",
+    },
+    () => {
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "sec1-key-id");
+      assertPkcs8Pem(credentials.apiKeySecret);
+      assert.doesNotMatch(credentials.apiKeySecret, /BEGIN EC PRIVATE KEY/);
+    },
+  );
+});
+
+test("PAY_TO_ADDRESS bypasses malformed CDP keys during wallet initialization", { concurrency: false }, () => {
+  const script = `
+    process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
+    process.env.CDP_API_KEY = "broken-key-id";
+    process.env.CDP_PRIVATE_KEY = "'not-a-real-private-key'";
+    process.env.CDP_WALLET_SECRET = "wallet-secret";
+
+    const { initializeOracleIdentity } = await import("./src/wallet.ts");
+    const identity = await initializeOracleIdentity();
+    console.log(JSON.stringify(identity));
+  `;
+
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "-e", script],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(
+    result.status,
+    0,
+    `child process failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+
+  const identity = JSON.parse(result.stdout.trim().split("\n").at(-1) || "{}") as {
+    address?: string;
+    agentKit?: unknown;
+  };
+
+  assert.equal(identity.address, FIXED_PAY_TO_ADDRESS);
+  assert.equal(identity.agentKit, null);
 });
