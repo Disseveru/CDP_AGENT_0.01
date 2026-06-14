@@ -26,7 +26,16 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 | Task | Command |
 |---|---|
 | Install dependencies | `npm install` |
+| Install agentic-wallet skill (Cursor) | `npm run skills:install` |
 | Start interactive CLI REPL | `npm start` or `node index.js` |
+
+### Agentic Wallet skill
+
+This repo includes the Coinbase [agentic-wallet](https://github.com/coinbase/agentic-wallet-skills) Cursor skill at `.agents/skills/agentic-wallet/`. It teaches agents to operate a wallet through the [`awal`](https://www.npmjs.com/package/awal) CLI: sign-in, balances, send USDC/ETH/POL/SOL, trade, fund, x402 bazaar search/pay/monetize, and onchain SQL queries on Base.
+
+- Restore or refresh from lockfile: `npx skills experimental_install`
+- Update pinned skill copy: `npm run skills:update`
+- Skill router entrypoint: `.agents/skills/agentic-wallet/SKILL.md`
 
 ### Subprojects
 
