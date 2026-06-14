@@ -18,6 +18,7 @@ const {
 const { CdpClient } = require("@coinbase/cdp-sdk");
 const { generateJwt } = require("@coinbase/cdp-sdk/auth");
 const { getLangChainTools } = require("@coinbase/agentkit-langchain");
+const instadapp = require("./lib/instadapp");
 
 dotenv.config();
 
@@ -376,6 +377,9 @@ function printHelp(tools) {
   console.log("  mint <contract> <destination> Mint an ERC-721 NFT");
   console.log("  send <to> <amount>           Send native ETH (smart wallet mode)");
   console.log("  faucet                       Request Base Sepolia test funds (EOA mode)");
+  console.log("  dsa accounts|build|recipes   Instadapp DSA account management");
+  console.log("  dsa encode <json>            Encode spells without broadcasting");
+  console.log("  dsa cast <json> [--build]    Cast Instadapp spells on Base mainnet (8453)");
   console.log("  run <tool> [json]            Invoke any registered tool with JSON args");
   console.log("  exit                         Quit");
   console.log("\nRegistered tools:");
@@ -411,6 +415,10 @@ function parseCommandInput(input, tools, toolsByName) {
   const tokens = trimmed.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
   const [command, ...rest] = tokens;
   const normalized = command.toLowerCase();
+
+  if (normalized === "dsa") {
+    return { type: "dsa", subcommand: rest[0]?.toLowerCase(), args: rest.slice(1) };
+  }
 
   const aliases = {
     wallet: "get_wallet_details",
@@ -484,6 +492,88 @@ function parseCommandInput(input, tools, toolsByName) {
   }
 
   return { type: "invoke", tool, args: {} };
+}
+
+/**
+ * @param {{ subcommand?: string, args: string[] }} command
+ */
+async function runDsaCommand(command) {
+  const subcommand = command.subcommand;
+  const args = command.args;
+
+  if (!subcommand || subcommand === "help") {
+    return [
+      "Instadapp DSA commands (requires DSA_PRIVATE_KEY or MNEMONIC_PHRASE):",
+      "  dsa accounts",
+      "  dsa build",
+      "  dsa recipes",
+      "  dsa encode <json-spells>",
+      '  dsa cast <json-spells> [--build]',
+      "",
+      "dsa-connect targets Base mainnet (8453), not Base Sepolia.",
+      "Example:",
+      '  dsa cast \'[{"connector":"BASIC-A","method":"deposit","args":["0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","1000000000000000000",0,0]}]\' --build',
+    ].join("\n");
+  }
+
+  if (subcommand === "recipes" || subcommand === "recipe") {
+    if (subcommand === "recipes") {
+      return JSON.stringify(instadapp.listRecipes(), null, 2);
+    }
+
+    const [name, ...recipeArgs] = args;
+    const params = {};
+    for (let i = 0; i < recipeArgs.length; i += 1) {
+      if (recipeArgs[i] === "--amountWei" && recipeArgs[i + 1]) {
+        params.amountWei = recipeArgs[i + 1];
+        i += 1;
+      }
+    }
+    return JSON.stringify(instadapp.buildRecipe(name, params), null, 2);
+  }
+
+  const { dsa, web3, chainId, signerAddress } = instadapp.createDsaClient();
+  const state = instadapp.loadDsaState();
+  const autoBuild = args.includes("--build");
+  const jsonText = args.filter((token) => token !== "--build").join(" ").trim();
+
+  if (subcommand === "accounts") {
+    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
+    return JSON.stringify({ signerAddress, chainId, accounts }, null, 2);
+  }
+
+  if (subcommand === "build") {
+    const txHash = await instadapp.buildDsaAccount(dsa, web3);
+    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
+    return JSON.stringify({ txHash, accounts }, null, 2);
+  }
+
+  if (subcommand === "encode" || subcommand === "cast") {
+    if (!jsonText) {
+      throw new Error(`Usage: dsa ${subcommand} '<json-spells>' [--build]`);
+    }
+
+    instadapp.parseSpellsInput(jsonText);
+    const ensured = await instadapp.ensureDsaInstance(dsa, web3, signerAddress, {
+      autoBuild,
+      dsaId: state.dsaId,
+    });
+    const result = await instadapp.castSpells(dsa, web3, jsonText, {
+      dryRun: subcommand === "encode",
+    });
+
+    return JSON.stringify(
+      {
+        dsa: ensured.instance,
+        createdDsa: ensured.created,
+        ...result,
+      },
+      null,
+      2,
+    );
+  }
+
+  throw new Error(`Unknown dsa subcommand "${subcommand}". Type "dsa help".`);
 }
 
 /**
@@ -603,6 +693,13 @@ async function runRepl(tools, toolsByName, walletProvider) {
           continue;
         }
 
+        if (command.type === "dsa") {
+          const result = await runDsaCommand(command);
+          console.log(`\n${result}`);
+          console.log("-------------------\n");
+          continue;
+        }
+
         const result = await command.tool.invoke(command.args);
         console.log(`\n${result}`);
       } catch (error) {
@@ -636,6 +733,7 @@ module.exports = {
   isLegacyWalletEnabled,
   parseCommandInput,
   resolveCdpCredentials,
+  runDsaCommand,
   validateEnvironment,
 };
 

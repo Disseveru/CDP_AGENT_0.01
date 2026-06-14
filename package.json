@@ -9,7 +9,10 @@
     "start:mcp": "node gas-oracle-mcp/dist/server.js",
     "skills:install": "npx skills add coinbase/agentic-wallet-skills --agent cursor -y",
     "skills:update": "npx skills update agentic-wallet -y",
-    "test": "node --test index.test.js"
+    "dsa": "node scripts/dsa-cast.js",
+    "dsa:accounts": "node scripts/dsa-cast.js accounts",
+    "dsa:recipes": "node scripts/dsa-cast.js recipes",
+    "test": "node --test index.test.js lib/instadapp/spells.test.js"
   },
   "repository": {
     "type": "git",
@@ -29,7 +32,9 @@
     "@coinbase/agentkit": "^0.10.4",
     "@coinbase/agentkit-langchain": "^0.3.0",
     "@langchain/core": "^1.1.48",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "dsa-connect": "^0.7.52",
+    "web3": "^1.10.4"
   },
   "overrides": {
     "@privy-io/server-auth": "^1.32.5",
