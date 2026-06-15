@@ -10,7 +10,7 @@
     "skills:install": "npx skills add coinbase/agentic-wallet-skills --agent cursor -y",
     "skills:update": "npx skills update agentic-wallet -y",
     "dsa": "node scripts/dsa-cast.js",
-    "dsa:accounts": "node scripts/dsa-cast.js accounts",
+    "dsa:build-chains": "node scripts/dsa-cast.js build-chains",
     "dsa:recipes": "node scripts/dsa-cast.js recipes",
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
