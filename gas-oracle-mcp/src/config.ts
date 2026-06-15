@@ -28,7 +28,7 @@ const DEFAULT_CDP_FACILITATOR: Record<PaymentNetwork, string> = {
   base: "https://api.cdp.coinbase.com/platform/v2/x402/facilitator",
 };
 
-const DEFAULT_PERMISSIONLESS_FACILITATOR = "https://facilitator.xpay.sh";
+export const DEFAULT_PERMISSIONLESS_FACILITATOR = "https://facilitator.xpay.sh";
 
 function isCdpFacilitatorUrl(url: string): boolean {
   try {
@@ -53,6 +53,10 @@ function resolvePublicUrl(): string {
 /** Optional shared secret for Cursor IDE SSE connections (/sse, /messages). */
 const mcpApiKey = process.env.MCP_API_KEY?.trim() || undefined;
 
+function resolvePublicBaseUrl(): string {
+  return resolvePublicUrl().replace(/\/$/, "");
+}
+
 export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
@@ -60,7 +64,9 @@ export const CONFIG = {
   facilitatorUrl,
   usesCdpFacilitator: isCdpFacilitatorUrl(facilitatorUrl),
   port: Number(process.env.PORT || 4021),
-  publicUrl: resolvePublicUrl(),
+  publicUrl: resolvePublicBaseUrl(),
+  /** Absolute POST target for Cursor SSE clients (Railway-safe). */
+  sseMessagesEndpoint: `${resolvePublicBaseUrl()}/messages`,
   mcpApiKey,
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {

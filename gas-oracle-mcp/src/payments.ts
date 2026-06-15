@@ -28,7 +28,7 @@ import {
   validateDiscoveryExtensionSpec,
 } from "@x402/extensions/bazaar";
 
-import { CONFIG } from "./config.js";
+import { CONFIG, DEFAULT_PERMISSIONLESS_FACILITATOR } from "./config.js";
 import { resolveCdpCredentials } from "./wallet.js";
 
 const CDP_X402_PLATFORM_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -192,23 +192,51 @@ export function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
   };
 }
 
+function buildResourceServer(facilitatorClient: FacilitatorClient): x402ResourceServer {
+  return new x402ResourceServer(facilitatorClient)
+    .register(CONFIG.caip2Network, new ExactEvmScheme())
+    .registerExtension(bazaarResourceServerExtension);
+}
+
+async function initializeResourceServer(
+  facilitatorUrl: string,
+  facilitatorClient: FacilitatorClient,
+): Promise<x402ResourceServer> {
+  const resourceServer = buildResourceServer(facilitatorClient);
+  await resourceServer.initialize();
+  console.log(`[x402] Facilitator: ${facilitatorUrl}`);
+  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
+  return resourceServer;
+}
+
 /**
  * Builds and initializes the x402 resource server for our payment network,
  * with the "exact" EVM scheme (EIP-3009 USDC transfers) and Bazaar discovery.
+ *
+ * When the primary CDP facilitator cannot load supported payment kinds (common
+ * when Railway CDP keys are malformed), falls back to the permissionless
+ * facilitator so SSE/MCP can still serve paid tools.
  */
 export async function createResourceServer(): Promise<x402ResourceServer> {
-  const facilitatorClient = createFacilitatorClient();
+  const primaryClient = createFacilitatorClient();
 
-  const resourceServer = new x402ResourceServer(facilitatorClient)
-    .register(CONFIG.caip2Network, new ExactEvmScheme())
-    .registerExtension(bazaarResourceServerExtension);
+  try {
+    return await initializeResourceServer(CONFIG.facilitatorUrl, primaryClient);
+  } catch (primaryError) {
+    const canFallback =
+      CONFIG.usesCdpFacilitator && CONFIG.facilitatorUrl !== DEFAULT_PERMISSIONLESS_FACILITATOR;
+    if (!canFallback) {
+      throw primaryError;
+    }
 
-  // Fetches supported schemes/networks from the facilitator.
-  await resourceServer.initialize();
+    console.warn(
+      `[x402] Primary facilitator failed (${primaryError instanceof Error ? primaryError.message : String(primaryError)}); ` +
+        `retrying with ${DEFAULT_PERMISSIONLESS_FACILITATOR}`,
+    );
 
-  console.log(`[x402] Facilitator: ${CONFIG.facilitatorUrl}`);
-  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
-  return resourceServer;
+    const fallbackClient = new HTTPFacilitatorClient({ url: DEFAULT_PERMISSIONLESS_FACILITATOR });
+    return initializeResourceServer(DEFAULT_PERMISSIONLESS_FACILITATOR, fallbackClient);
+  }
 }
 
 /**

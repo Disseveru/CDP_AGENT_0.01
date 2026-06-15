@@ -68,6 +68,10 @@ async function main() {
     await check("/ready", async () => {
       const res = await fetch(`${railwayUrl}/ready`);
       if (!res.ok) throw new Error(`HTTP ${res.status} (CDP/x402 may still be starting)`);
+      const body = await res.json();
+      if (body.status !== "ready" && body.status !== "degraded") {
+        throw new Error(JSON.stringify(body));
+      }
     }),
   );
 

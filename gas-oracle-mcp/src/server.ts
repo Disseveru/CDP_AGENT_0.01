@@ -142,7 +142,7 @@ interface PreparedTool {
 }
 
 interface RuntimeState {
-  status: "starting" | "ready" | "error";
+  status: "starting" | "ready" | "degraded" | "error";
   identity?: OracleIdentity;
   resourceServer?: x402ResourceServer;
   discoveryHttpServer?: x402HTTPResourceServer;
@@ -172,16 +172,27 @@ async function prepareTools(
 async function initializeRuntime(state: RuntimeState): Promise<void> {
   try {
     const identity = await initializeOracleIdentity();
-    const resourceServer = await createResourceServer();
-    const tools = await prepareTools(resourceServer, identity.address);
-    const discoveryHttpServer = await createDiscoveryHttpServer(resourceServer, identity.address);
-
     state.identity = identity;
-    state.resourceServer = resourceServer;
-    state.discoveryHttpServer = discoveryHttpServer;
-    state.tools = tools;
-    state.status = "ready";
-    state.error = undefined;
+
+    try {
+      const resourceServer = await createResourceServer();
+      const tools = await prepareTools(resourceServer, identity.address);
+      const discoveryHttpServer = await createDiscoveryHttpServer(resourceServer, identity.address);
+
+      state.resourceServer = resourceServer;
+      state.discoveryHttpServer = discoveryHttpServer;
+      state.tools = tools;
+      state.status = "ready";
+      state.error = undefined;
+    } catch (paymentError) {
+      state.status = "degraded";
+      state.tools = [];
+      state.error =
+        paymentError instanceof Error ? paymentError.message : String(paymentError);
+      console.warn(
+        `[boot] x402 payments unavailable (${state.error}); free MCP tools still work over /sse and /mcp`,
+      );
+    }
   } catch (error) {
     state.status = "error";
     state.error = error instanceof Error ? error.message : String(error);
@@ -202,6 +213,16 @@ function isReady(state: RuntimeState): state is RuntimeState & {
       state.resourceServer &&
       state.discoveryHttpServer &&
       state.tools,
+  );
+}
+
+/** True when Cursor SSE and MCP can serve at least free tools. */
+function isMcpOperational(state: RuntimeState): state is RuntimeState & {
+  identity: OracleIdentity;
+  tools: PreparedTool[];
+} {
+  return Boolean(
+    (state.status === "ready" || state.status === "degraded") && state.identity && state.tools,
   );
 }
 
@@ -322,43 +343,48 @@ async function handleDiscoveryRequest(
   res.json(body);
 }
 
-function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[]): McpServer {
+function buildMcpServer(state: RuntimeState): McpServer {
   const mcpServer = new McpServer({
     name: CONFIG.serviceName,
     version: CONFIG.serviceVersion,
   });
 
-  for (const { definition, accepts, extensions } of tools) {
-    const paid = createPaymentWrapper(resourceServer, {
-      accepts,
-      resource: {
-        url: `mcp://tool/${definition.name}`,
-        description: definition.description,
-        mimeType: "application/json",
-        serviceName: CONFIG.serviceName,
-        tags: ["webhook", "inbox", "fetch", "agent-infrastructure", "relay"],
-      },
-      extensions,
-      hooks: {
-        onBeforeExecution: async () => {
-          console.log(`[x402] Payment verified for ${definition.name}, executing...`);
+  if (isReady(state)) {
+    for (const { definition, accepts, extensions } of state.tools) {
+      const paid = createPaymentWrapper(state.resourceServer, {
+        accepts,
+        resource: {
+          url: `mcp://tool/${definition.name}`,
+          description: definition.description,
+          mimeType: "application/json",
+          serviceName: CONFIG.serviceName,
+          tags: ["webhook", "inbox", "fetch", "agent-infrastructure", "relay"],
         },
-        onAfterSettlement: async ({ settlement }) => {
-          console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
+        extensions,
+        hooks: {
+          onBeforeExecution: async () => {
+            console.log(`[x402] Payment verified for ${definition.name}, executing...`);
+          },
+          onAfterSettlement: async ({ settlement }) => {
+            console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
+          },
         },
-      },
-    });
+      });
 
-    mcpServer.tool(
-      definition.name,
-      definition.description,
-      definition.zodShape,
-      paid(async (args) => ({
-        content: [
-          { type: "text" as const, text: JSON.stringify(await definition.handler(args), null, 2) },
-        ],
-      })),
-    );
+      mcpServer.tool(
+        definition.name,
+        definition.description,
+        definition.zodShape,
+        paid(async (args) => ({
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(await definition.handler(args), null, 2),
+            },
+          ],
+        })),
+      );
+    }
   }
 
   // Free: agents need an inbox before they can pay to drain it.
@@ -371,16 +397,22 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
     }),
   );
 
+  const paidTools = isReady(state)
+    ? state.tools.map((t) => ({ name: t.definition.name, price: t.definition.price }))
+    : TOOL_DEFINITIONS.map((t) => ({ name: t.name, price: t.price }));
+
   mcpServer.tool("ping", "Free health check. Returns service status and pricing.", {}, async () => ({
     content: [
       {
         type: "text" as const,
         text: JSON.stringify({
-          status: "ok",
+          status: state.status === "ready" ? "ok" : state.status,
           service: CONFIG.serviceName,
           paymentNetwork: CONFIG.caip2Network,
           freeTools: ["create_inbox", "ping"],
-          paidTools: tools.map((t) => ({ name: t.definition.name, price: t.definition.price })),
+          paidTools,
+          paymentsAvailable: state.status === "ready",
+          error: state.error,
         }),
       },
     ],
@@ -416,6 +448,9 @@ async function main(): Promise<void> {
 
   const app = express();
   const state: RuntimeState = { status: "starting" };
+
+  // Railway terminates TLS and proxies requests; needed for correct host/proto on SSE POSTs.
+  app.set("trust proxy", 1);
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.text({ type: ["text/*", "application/xml"], limit: "1mb" }));
@@ -456,7 +491,7 @@ async function main(): Promise<void> {
   });
 
   app.post("/mcp", async (req, res) => {
-    if (!isReady(state)) {
+    if (!isMcpOperational(state)) {
       res.status(503).json({
         jsonrpc: "2.0",
         error: {
@@ -470,7 +505,7 @@ async function main(): Promise<void> {
     }
 
     try {
-      const mcpServer = buildMcpServer(state.resourceServer, state.tools);
+      const mcpServer = buildMcpServer(state);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       res.on("close", () => {
         transport.close();
@@ -500,7 +535,7 @@ async function main(): Promise<void> {
 
   // HTTP+SSE transport for Cursor IDE and other remote MCP clients.
   app.get("/sse", requireMcpApiKey, async (req, res) => {
-    if (!isReady(state)) {
+    if (!isMcpOperational(state)) {
       res.status(503).json({
         error: `AgentWire is ${state.status}`,
         details: state.error,
@@ -509,14 +544,15 @@ async function main(): Promise<void> {
     }
 
     try {
-      const transport = new SSEServerTransport("/messages", res);
+      res.setHeader("X-Accel-Buffering", "no");
+      const transport = new SSEServerTransport(CONFIG.sseMessagesEndpoint, res);
       sseTransports.set(transport.sessionId, transport);
       res.on("close", () => {
         sseTransports.delete(transport.sessionId);
         void transport.close();
       });
 
-      const mcpServer = buildMcpServer(state.resourceServer, state.tools);
+      const mcpServer = buildMcpServer(state);
       await mcpServer.connect(transport);
     } catch (error) {
       console.error("[sse] Connection error:", error);
@@ -565,7 +601,7 @@ async function main(): Promise<void> {
   });
 
   app.get("/ready", (_req, res) => {
-    if (!isReady(state)) {
+    if (!isMcpOperational(state)) {
       res.status(503).json({
         status: state.status,
         service: CONFIG.serviceName,
@@ -576,10 +612,12 @@ async function main(): Promise<void> {
     }
 
     res.json({
-      status: "ready",
+      status: state.status === "ready" ? "ready" : "degraded",
       service: CONFIG.serviceName,
       payTo: state.identity.address,
       network: CONFIG.caip2Network,
+      paymentsAvailable: state.status === "ready",
+      error: state.error,
     });
   });
 
@@ -592,11 +630,15 @@ async function main(): Promise<void> {
       console.log("[boot] MCP API key auth enabled for /sse and /messages");
     }
     void initializeRuntime(state).then(() => {
-      if (isReady(state)) {
+      if (isMcpOperational(state)) {
         console.log(`[boot] Revenue wallet:   ${state.identity.address}`);
-        console.log(
-          `[boot] Paid tools: ${state.tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`,
-        );
+        if (isReady(state)) {
+          console.log(
+            `[boot] Paid tools: ${state.tools.map((t) => `${t.definition.name} (${t.definition.price})`).join(", ")}`,
+          );
+        } else {
+          console.log("[boot] Paid tools unavailable until x402 facilitator initializes");
+        }
       }
     });
   });

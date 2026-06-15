@@ -49,7 +49,26 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 
 Your public URLs:
 - MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
+- Cursor SSE endpoint: `https://YOUR-DOMAIN.up.railway.app/sse`
 - Webhooks: `https://YOUR-DOMAIN.up.railway.app/hooks/{inboxId}`
+
+### 4. Connect Cursor IDE (remote MCP over SSE)
+
+From the repo root:
+
+```bash
+npm run setup:cursor-mcp -- https://YOUR-DOMAIN.up.railway.app
+```
+
+Copy the printed `MCP_API_KEY` into **Railway → Variables**, redeploy, then verify:
+
+```bash
+npm run verify:cursor-mcp
+```
+
+Restart Cursor, open **Settings → MCP**, and enable **gas-oracle-mcp**.
+
+If the CDP facilitator fails to initialize on Railway, AgentWire still serves free tools (`ping`, `create_inbox`) over SSE while paid x402 tools remain unavailable until credentials are fixed.
 
 ### 3. Go live on mainnet (real USDC)
 

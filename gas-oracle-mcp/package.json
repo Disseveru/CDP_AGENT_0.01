@@ -9,7 +9,8 @@
     "start": "npm run build && node dist/server.js",
     "dev": "tsx src/server.ts",
     "smoke-test": "tsx scripts/smoke-test.ts",
-    "paid-test": "tsx scripts/paid-client-test.ts"
+    "paid-test": "tsx scripts/paid-client-test.ts",
+    "sse-test": "tsx scripts/sse-test.ts"
   },
   "engines": {
     "node": ">=20"
