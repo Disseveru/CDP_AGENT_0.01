@@ -50,6 +50,9 @@ function resolvePublicUrl(): string {
   return `http://localhost:${process.env.PORT || 4021}`;
 }
 
+/** Optional shared secret for Cursor IDE SSE connections (/sse, /messages). */
+const mcpApiKey = process.env.MCP_API_KEY?.trim() || undefined;
+
 export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
@@ -58,6 +61,7 @@ export const CONFIG = {
   usesCdpFacilitator: isCdpFacilitatorUrl(facilitatorUrl),
   port: Number(process.env.PORT || 4021),
   publicUrl: resolvePublicUrl(),
+  mcpApiKey,
   payToOverride: process.env.PAY_TO_ADDRESS,
   prices: {
     discovery: process.env.PRICE_DISCOVERY || "$0.001",
