@@ -12,6 +12,8 @@
     "dsa": "node scripts/dsa-cast.js",
     "dsa:accounts": "node scripts/dsa-cast.js accounts",
     "dsa:recipes": "node scripts/dsa-cast.js recipes",
+    "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
+    "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "test": "node --test index.test.js lib/instadapp/spells.test.js"
   },
   "repository": {

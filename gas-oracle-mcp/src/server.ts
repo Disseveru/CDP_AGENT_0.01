@@ -8,6 +8,7 @@
  * Revenue lands in the CDP AgentKit wallet initialized at boot.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createPaymentWrapper } from "@x402/mcp";
 import type {
@@ -19,7 +20,7 @@ import type {
 } from "@x402/core/server";
 import type { PaymentRequirements } from "@x402/core/types";
 import express from "express";
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
@@ -211,8 +212,9 @@ function buildServiceCard(state: RuntimeState): Record<string, unknown> {
     version: CONFIG.serviceVersion,
     status: state.status,
     tagline: "Webhook inbox + web fetch for autonomous agents",
-    protocol: "MCP over Streamable HTTP + x402 v2 payments",
+    protocol: "MCP over Streamable HTTP + SSE + x402 v2 payments",
     endpoint: `${CONFIG.publicUrl}/mcp`,
+    sseEndpoint: `${CONFIG.publicUrl}/sse`,
     webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
     paymentNetwork: CONFIG.caip2Network,
     facilitator: CONFIG.facilitatorUrl,
@@ -387,6 +389,28 @@ function buildMcpServer(resourceServer: x402ResourceServer, tools: PreparedTool[
   return mcpServer;
 }
 
+/** Active SSE sessions keyed by sessionId (Cursor IDE and other HTTP+SSE clients). */
+const sseTransports = new Map<string, SSEServerTransport>();
+
+function isAuthorizedMcpRequest(req: Request): boolean {
+  if (!CONFIG.mcpApiKey) return true;
+
+  const authorization = req.get("authorization");
+  const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  const apiKey = req.get("x-api-key");
+
+  return bearer === CONFIG.mcpApiKey || apiKey === CONFIG.mcpApiKey;
+}
+
+function requireMcpApiKey(req: Request, res: Response, next: NextFunction): void {
+  if (isAuthorizedMcpRequest(req)) {
+    next();
+    return;
+  }
+
+  res.status(401).json({ error: "Unauthorized" });
+}
+
 async function main(): Promise<void> {
   console.log(`[boot] ${CONFIG.serviceName} v${CONFIG.serviceVersion} starting...`);
 
@@ -474,6 +498,57 @@ async function main(): Promise<void> {
     });
   });
 
+  // HTTP+SSE transport for Cursor IDE and other remote MCP clients.
+  app.get("/sse", requireMcpApiKey, async (req, res) => {
+    if (!isReady(state)) {
+      res.status(503).json({
+        error: `AgentWire is ${state.status}`,
+        details: state.error,
+      });
+      return;
+    }
+
+    try {
+      const transport = new SSEServerTransport("/messages", res);
+      sseTransports.set(transport.sessionId, transport);
+      res.on("close", () => {
+        sseTransports.delete(transport.sessionId);
+        void transport.close();
+      });
+
+      const mcpServer = buildMcpServer(state.resourceServer, state.tools);
+      await mcpServer.connect(transport);
+    } catch (error) {
+      console.error("[sse] Connection error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to establish SSE transport" });
+      }
+    }
+  });
+
+  app.post("/messages", requireMcpApiKey, async (req, res) => {
+    const sessionId = req.query.sessionId;
+    if (typeof sessionId !== "string") {
+      res.status(400).send("Missing sessionId query parameter");
+      return;
+    }
+
+    const transport = sseTransports.get(sessionId);
+    if (!transport) {
+      res.status(404).send("Unknown SSE session");
+      return;
+    }
+
+    try {
+      await transport.handlePostMessage(req, res, req.body);
+    } catch (error) {
+      console.error("[sse] Message error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to handle SSE message" });
+      }
+    }
+  });
+
   app.get("/", (req, res, next) => {
     handleDiscoveryRequest(req, res, state).catch(next);
   });
@@ -509,9 +584,13 @@ async function main(): Promise<void> {
   });
 
   app.listen(CONFIG.port, "0.0.0.0", () => {
-    console.log(`[boot] AgentWire listening on port ${CONFIG.port}`);
+    console.log(`[boot] AgentWire listening on 0.0.0.0:${CONFIG.port}`);
     console.log(`[boot] MCP endpoint:     ${CONFIG.publicUrl}/mcp`);
+    console.log(`[boot] SSE endpoint:     ${CONFIG.publicUrl}/sse`);
     console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
+    if (CONFIG.mcpApiKey) {
+      console.log("[boot] MCP API key auth enabled for /sse and /messages");
+    }
     void initializeRuntime(state).then(() => {
       if (isReady(state)) {
         console.log(`[boot] Revenue wallet:   ${state.identity.address}`);

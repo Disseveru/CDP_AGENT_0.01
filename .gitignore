@@ -70,6 +70,10 @@ web_modules/
 .env.*
 !.env.example
 
+# Cursor MCP local setup (contains API key after npm run setup:cursor-mcp)
+.cursor/mcp-setup.secrets.json
+.cursor/railway-url
+
 # CDP AgentKit local wallet persistence (contains sensitive wallet data)
 wallet_data.txt
 

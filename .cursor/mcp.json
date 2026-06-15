@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "gas-oracle-mcp": {
+      "type": "sse",
+      "url": "${env:GAS_ORACLE_MCP_URL}/sse",
+      "headers": {
+        "Authorization": "Bearer ${env:GAS_ORACLE_MCP_API_KEY}"
+      }
+    },
     "railway": {
       "command": "railway",
       "args": ["mcp"]
