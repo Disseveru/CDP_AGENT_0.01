@@ -73,6 +73,7 @@ web_modules/
 # Cursor MCP local setup (contains API key after npm run setup:cursor-mcp)
 .cursor/mcp-setup.secrets.json
 .cursor/railway-url
+.cursor/agent-bootstrap.json
 
 # CDP AgentKit local wallet persistence (contains sensitive wallet data)
 wallet_data.txt

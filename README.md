@@ -9,11 +9,21 @@ Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (S
 
 Both projects share the same set of Coinbase CDP credentials.
 
-This repo also ships the Coinbase [**agentic-wallet**](https://github.com/coinbase/agentic-wallet-skills) Cursor skill (`.agents/skills/agentic-wallet/`). It complements the CDP AgentKit CLI by routing agents through the [`awal`](https://www.npmjs.com/package/awal) CLI for sign-in, balances, sends, trades, funding, x402 paid APIs, and onchain queries.
+This repo also ships Cursor agent skills for **Agentic Market** (`.agents/skills/agentic-market/`) and **Agentic Wallet** (`.agents/skills/agentic-wallet/`). Every agent session should run `npm run bootstrap:agent` first — it syncs the [Agentic Market skill](https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869) and checks Agentic Wallet status via [`awal`](https://www.npmjs.com/package/awal).
 
 ---
 
-## Prerequisites
+## Agent bootstrap (every Cursor agent session)
+
+```bash
+npm run bootstrap:agent
+```
+
+Then read `.agents/skills/agentic-market/SKILL.md` and follow the **CLI setup** path. See `AGENTS.md` for the full mandatory checklist.
+
+---
+
+## Agentic Wallet skill (Cursor)
 
 - Node.js `>= 20`
 - A Coinbase Developer Platform account ([portal.cdp.coinbase.com](https://portal.cdp.coinbase.com)) with an API key and Wallet Secret
