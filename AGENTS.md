@@ -40,6 +40,51 @@ This repo includes the Coinbase [agentic-wallet](https://github.com/coinbase/age
 ### Subprojects
 
 - `gas-oracle-mcp/`: AgentWire MCP, an x402-paid MCP server (TypeScript) that sells webhook inbox relay + real web fetch for autonomous agents (USDC micro-payments via a CDP AgentKit wallet). Install with `npm install --legacy-peer-deps` (plain `npm install` can hang resolving the AgentKit dependency graph). Run with `npm start`, verify with `npm run smoke-test` (free) and `npm run paid-test` (settles real testnet USDC payments via the CDP facilitator; auto-funds a local buyer wallet from the CDP faucet). Uses the same CDP env vars as the root project. Facilitator defaults to `https://api.cdp.coinbase.com/platform/v2/x402` per the CDP sellers quickstart.
+
+### AgentWire on Railway (production)
+
+| Item | Value |
+|---|---|
+| Public URL | `https://gas-oracle-mcp-production.up.railway.app` |
+| Network | **Base mainnet** (`NETWORK=base`, chain `eip155:8453`) — real USDC, not testnet |
+| MCP SSE endpoint | `https://gas-oracle-mcp-production.up.railway.app/sse` |
+| Health / ready | `/health` (liveness), `/ready` (CDP/x402 init) |
+
+The root CLI still defaults to **Base Sepolia** locally. Only the Railway AgentWire service runs on mainnet.
+
+### Cursor MCP setup (for new agents)
+
+Local setup state lives in **gitignored** files — do not commit secrets.
+
+| File | Purpose |
+|---|---|
+| `.cursor/mcp-setup.secrets.json` | `railwayUrl`, `mcpApiKey`, `createdAt` — written by setup, used by verify/diagnose |
+| `~/.cursor/mcp.json` | Cursor IDE MCP config (user-level, not in repo) |
+
+**Bootstrap a new cloud agent or laptop:**
+
+```bash
+# 1. Write ~/.cursor/mcp.json and .cursor/mcp-setup.secrets.json
+npm run setup:cursor-mcp -- https://gas-oracle-mcp-production.up.railway.app
+
+# 2. If MCP_API_KEY is not yet on Railway, copy the printed value into
+#    Railway → gas-oracle-mcp → Variables → MCP_API_KEY, then redeploy.
+#    If Railway already has MCP_API_KEY, sync local secrets to match instead
+#    (do not rotate the key unless you also update Railway).
+
+# 3. Verify SSE auth
+npm run verify:cursor-mcp
+
+# 4. Diagnose Railway health, variables (format only), and boot-log warnings
+RAILWAY_TOKEN=... npm run railway:diagnose
+```
+
+After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp**. Expect tools: `create_inbox`, `drain_inbox`, `peek_inbox`, `fetch_url`, `ping`.
+
+**Railway API access from cloud agents:** `RAILWAY_TOKEN` (injected) supports **read** operations via GraphQL (logs, variables, deployments). Secret variable **writes** are blocked from this environment (403); update `CDP_*` or `MCP_API_KEY` in the Railway dashboard if credentials are corrupted.
+
+**Known boot-log issue (2026-06-18):** Railway `CDP_API_KEY` / `CDP_PRIVATE_KEY` contain stray whitespace and fail CDP facilitator auth (401). AgentWire falls back to `https://facilitator.xpay.sh` and stays `ready`, but CDP Bazaar auto-listing needs valid CDP keys. Fix: re-paste the three CDP vars in Railway Variables (single-line PEM with `\\n` for the private key), then redeploy.
+
 - `lib/instadapp/`: Instadapp `dsa-connect` spell casting on supported mainnets (default **Base mainnet**, chain id `8453`). Requires a local signer via `DSA_PRIVATE_KEY`, `PRIVATE_KEY`, `MNEMONIC_PHRASE`, or a legacy `wallet_data.txt` seed. **Base Sepolia (84532) is not supported by dsa-connect.** CLI: `npm run dsa -- accounts|build|recipes|encode|cast`. REPL: `dsa accounts`, `dsa cast '<json>' --build`.
 
 ### Runtime notes
