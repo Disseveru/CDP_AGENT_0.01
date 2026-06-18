@@ -4,17 +4,18 @@
  * Usage: npm run smoke-test  (server must be running)
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { extractPaymentRequiredFromError } from "@x402/mcp";
 import { validateDiscoveryExtensionSpec } from "@x402/extensions/bazaar";
+
+import { createStreamableMcpTransport } from "./mcp-transport.js";
 
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:4021/mcp";
 const BASE_URL = SERVER_URL.replace(/\/mcp$/, "");
 
 async function main(): Promise<void> {
   const client = new Client({ name: "smoke-test", version: "1.0.0" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(SERVER_URL)));
+  await client.connect(createStreamableMcpTransport(SERVER_URL));
 
   console.log("=== 1. listTools ===");
   const { tools } = await client.listTools();

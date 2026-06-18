@@ -5,6 +5,10 @@
  *   npm run sse-test
  *   MCP_API_KEY=secret npm run sse-test -- https://your-app.up.railway.app
  */
+import { config as loadEnv } from "dotenv";
+
+loadEnv();
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
