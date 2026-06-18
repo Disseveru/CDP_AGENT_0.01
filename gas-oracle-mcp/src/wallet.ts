@@ -145,6 +145,30 @@ export function resolveCdpCredentials(): CdpCredentials {
   return { apiKeyId, apiKeySecret, walletSecret };
 }
 
+/**
+ * Resolves only the CDP API key pair used by the x402 facilitator.
+ * Returns undefined when credentials are missing or the private key is invalid.
+ */
+export function resolveCdpApiCredentials(): { apiKeyId: string; apiKeySecret: string } | undefined {
+  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
+  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
+  if (!apiKeyId || !rawSecret) {
+    return undefined;
+  }
+
+  try {
+    const normalizedSecret = normalizePrivateKeySecret(rawSecret);
+    const apiKeySecret = canonicalizePrivateKeySecret(normalizedSecret);
+    if (!apiKeySecret.includes("BEGIN PRIVATE KEY")) {
+      return undefined;
+    }
+    crypto.createPrivateKey({ key: apiKeySecret, format: "pem", type: "pkcs8" });
+    return { apiKeyId, apiKeySecret };
+  } catch {
+    return undefined;
+  }
+}
+
 function loadPersistedAddress(): `0x${string}` | undefined {
   try {
     const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8");

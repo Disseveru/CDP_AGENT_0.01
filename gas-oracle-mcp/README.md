@@ -41,9 +41,9 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
    - `CDP_API_KEY` (or `CDP_API_KEY_ID`) for the API key ID
    - `CDP_PRIVATE_KEY` (or `CDP_API_KEY_SECRET`) for the API key secret / PEM
    - `CDP_WALLET_SECRET`
-   - Optional: `PAY_TO_ADDRESS=0x...` to reuse an existing payout wallet and skip CDP wallet creation/key parsing on boot
-     - When `PAY_TO_ADDRESS` is set and `FACILITATOR_URL` is not, AgentWire now defaults to the permissionless `https://facilitator.xpay.sh` facilitator instead of CDP's signed endpoint
+   - Optional: `PAY_TO_ADDRESS=0x...` to reuse an existing payout wallet and skip CDP wallet creation on boot
    - `NETWORK` = `base` (real money, Bazaar-discoverable) or `base-sepolia` (testnet)
+   - Facilitator defaults to the CDP endpoint (`https://api.cdp.coinbase.com/platform/v2/x402`) per the [sellers quickstart](https://docs.cdp.coinbase.com/x402/quickstart-for-sellers). Override with `FACILITATOR_URL=https://x402.org/facilitator` for signup-free testnet testing.
 4. **Networking** → **Generate Domain**
 5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`. Then visit `/ready` to confirm CDP/x402 initialization completed.
 

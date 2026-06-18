@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { resolveCdpCredentials } from "./wallet.js";
+import { resolveCdpApiCredentials, resolveCdpCredentials } from "./wallet.js";
 
 const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXED_PAY_TO_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189";
@@ -141,6 +141,62 @@ test("resolveCdpCredentials converts SEC1 EC keys to PKCS8", { concurrency: fals
   );
 });
 
+test("resolveCdpApiCredentials accepts API key aliases without wallet secret", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: undefined,
+      CDP_PRIVATE_KEY: undefined,
+      CDP_API_KEY_ID: "alias-key-id",
+      CDP_API_KEY_SECRET: pkcs8Pem.replace(/\n/g, "\\n"),
+      CDP_WALLET_SECRET: undefined,
+    },
+    () => {
+      const credentials = resolveCdpApiCredentials();
+      assert.ok(credentials);
+      assert.equal(credentials?.apiKeyId, "alias-key-id");
+      assertPkcs8Pem(credentials!.apiKeySecret);
+    },
+  );
+});
+
+test("resolveCdpApiCredentials returns undefined for malformed private keys", { concurrency: false }, () => {
+  withEnv(
+    {
+      CDP_API_KEY: "broken-key-id",
+      CDP_PRIVATE_KEY: "'not-a-real-private-key'",
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+    },
+    () => {
+      assert.equal(resolveCdpApiCredentials(), undefined);
+    },
+  );
+});
+
+test("createCdpFacilitatorConfig uses the sellers quickstart facilitator URL", { concurrency: false }, () => {
+  const script = `
+    const { createCdpFacilitatorConfig } = await import("./src/payments.ts");
+    console.log(createCdpFacilitatorConfig().url);
+  `;
+
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "-e", script],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(
+    result.status,
+    0,
+    `child process failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  );
+  assert.equal(result.stdout.trim().split("\n").at(-1), "https://api.cdp.coinbase.com/platform/v2/x402");
+});
+
 test("PAY_TO_ADDRESS bypasses malformed CDP keys during wallet initialization", { concurrency: false }, () => {
   const script = `
     process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
@@ -177,15 +233,15 @@ test("PAY_TO_ADDRESS bypasses malformed CDP keys during wallet initialization", 
   assert.equal(identity.agentKit, null);
 });
 
-test("PAY_TO_ADDRESS disables CDP facilitator auth when keys are malformed", { concurrency: false }, () => {
+test("malformed CDP keys produce no facilitator auth headers", { concurrency: false }, () => {
   const script = `
-    process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
     process.env.CDP_API_KEY = "broken-key-id";
     process.env.CDP_PRIVATE_KEY = "'not-a-real-private-key'";
-    process.env.CDP_WALLET_SECRET = "wallet-secret";
+    delete process.env.CDP_API_KEY_ID;
+    delete process.env.CDP_API_KEY_SECRET;
 
     const { createCdpFacilitatorConfig } = await import("./src/payments.ts");
-    const config = createCdpFacilitatorConfig("https://api.cdp.coinbase.com/platform/v2/x402/facilitator");
+    const config = createCdpFacilitatorConfig();
     const headers = await config.createAuthHeaders?.();
     console.log(JSON.stringify(headers));
   `;
@@ -215,15 +271,14 @@ test("PAY_TO_ADDRESS disables CDP facilitator auth when keys are malformed", { c
   assert.equal(headers.supported?.Authorization, undefined);
 });
 
-test("PAY_TO_ADDRESS defaults to the permissionless facilitator when none is configured", {
+test("defaults to the CDP facilitator URL from the sellers quickstart", {
   concurrency: false,
 }, () => {
   const script = `
-    process.env.PAY_TO_ADDRESS = ${JSON.stringify(FIXED_PAY_TO_ADDRESS)};
     delete process.env.FACILITATOR_URL;
 
-    const { CONFIG } = await import("./src/config.ts");
-    console.log(CONFIG.facilitatorUrl);
+    const { CONFIG, CDP_FACILITATOR_URL } = await import("./src/config.ts");
+    console.log(CONFIG.facilitatorUrl === CDP_FACILITATOR_URL ? CONFIG.facilitatorUrl : "mismatch");
   `;
 
   const result = spawnSync(
@@ -240,5 +295,5 @@ test("PAY_TO_ADDRESS defaults to the permissionless facilitator when none is con
     0,
     `child process failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
-  assert.equal(result.stdout.trim().split("\n").at(-1), "https://facilitator.xpay.sh");
+  assert.equal(result.stdout.trim().split("\n").at(-1), "https://api.cdp.coinbase.com/platform/v2/x402");
 });

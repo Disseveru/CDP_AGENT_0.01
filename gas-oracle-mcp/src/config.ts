@@ -22,13 +22,11 @@ const AGENTKIT_NETWORK_ID: Record<PaymentNetwork, string> = {
   base: "base-mainnet",
 };
 
-const DEFAULT_CDP_FACILITATOR: Record<PaymentNetwork, string> = {
-  // CDP-settled endpoints are eligible for Bazaar discovery.
-  "base-sepolia": "https://api.cdp.coinbase.com/platform/v2/x402/facilitator",
-  base: "https://api.cdp.coinbase.com/platform/v2/x402/facilitator",
-};
+/** CDP facilitator (recommended for testnet and mainnet). */
+export const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
 
-export const DEFAULT_PERMISSIONLESS_FACILITATOR = "https://facilitator.xpay.sh";
+/** Signup-free testnet facilitator from the CDP sellers quickstart. */
+export const X402_ORG_TESTNET_FACILITATOR = "https://x402.org/facilitator";
 
 function isCdpFacilitatorUrl(url: string): boolean {
   try {
@@ -38,9 +36,7 @@ function isCdpFacilitatorUrl(url: string): boolean {
   }
 }
 
-const facilitatorUrl =
-  process.env.FACILITATOR_URL ||
-  (process.env.PAY_TO_ADDRESS ? DEFAULT_PERMISSIONLESS_FACILITATOR : DEFAULT_CDP_FACILITATOR[NETWORK]);
+const facilitatorUrl = process.env.FACILITATOR_URL || CDP_FACILITATOR_URL;
 
 /** PUBLIC_URL override, or Railway's injected domain, or local default. */
 function resolvePublicUrl(): string {

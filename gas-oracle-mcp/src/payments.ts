@@ -11,9 +11,8 @@
  * The CDP Facilitator uses that field to associate the settlement with the
  * resource and index it in the Bazaar automatically.
  */
-import { createAuthHeader, createCorrelationHeader } from "@coinbase/x402";
+import { createFacilitatorConfig, facilitator as defaultCdpFacilitator } from "@coinbase/x402";
 import {
-  type FacilitatorClient,
   HTTPFacilitatorClient,
   x402HTTPResourceServer,
   x402ResourceServer,
@@ -28,10 +27,8 @@ import {
   validateDiscoveryExtensionSpec,
 } from "@x402/extensions/bazaar";
 
-import { CONFIG, DEFAULT_PERMISSIONLESS_FACILITATOR } from "./config.js";
-import { resolveCdpCredentials } from "./wallet.js";
-
-const CDP_X402_PLATFORM_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+import { CONFIG } from "./config.js";
+import { resolveCdpApiCredentials } from "./wallet.js";
 
 const SERVICE_CARD_OUTPUT_SCHEMA = {
   properties: {
@@ -92,151 +89,51 @@ export const SERVICE_CARD_OUTPUT_EXAMPLE = {
   ],
 } as const;
 
-/** Creates the facilitator client, attaching CDP auth headers on mainnet. */
-function createFacilitatorClient(): FacilitatorClient {
-  if (CONFIG.usesCdpFacilitator) {
-    const facilitatorClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CONFIG.facilitatorUrl));
-    const supportedClient = new HTTPFacilitatorClient(createCdpFacilitatorConfig(CDP_X402_PLATFORM_URL));
+/**
+ * Builds the CDP facilitator config from the official @coinbase/x402 package,
+ * matching the CDP sellers quickstart "Running on Mainnet" section.
+ */
+export function createCdpFacilitatorConfig(): FacilitatorConfig {
+  const credentials = resolveCdpApiCredentials();
+  if (credentials) {
+    return createFacilitatorConfig(credentials.apiKeyId, credentials.apiKeySecret);
+  }
 
-    return {
-      verify: (paymentPayload, paymentRequirements) =>
-        facilitatorClient.verify(paymentPayload, paymentRequirements),
-      settle: (paymentPayload, paymentRequirements) =>
-        facilitatorClient.settle(paymentPayload, paymentRequirements),
-      getSupported: () => supportedClient.getSupported(),
-    };
+  if (CONFIG.usesCdpFacilitator) {
+    console.warn(
+      "[x402] CDP facilitator auth unavailable until CDP_API_KEY (or CDP_API_KEY_ID) and " +
+        "CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET) are configured.",
+    );
+  }
+
+  return defaultCdpFacilitator;
+}
+
+/** Creates the facilitator client for verify/settle operations. */
+function createFacilitatorClient(): HTTPFacilitatorClient {
+  if (CONFIG.usesCdpFacilitator) {
+    return new HTTPFacilitatorClient(createCdpFacilitatorConfig());
   }
   return new HTTPFacilitatorClient({ url: CONFIG.facilitatorUrl });
 }
 
-export function createCdpFacilitatorConfig(url: string): FacilitatorConfig {
-  let credentials: ReturnType<typeof resolveCdpCredentials> | undefined;
-
-  if (CONFIG.payToOverride && !CONFIG.usesCdpFacilitator) {
-    console.log("[x402] PAY_TO_ADDRESS set; skipping CDP facilitator auth headers.");
-  } else {
-    try {
-      credentials = resolveCdpCredentials();
-    } catch (error) {
-      console.warn(
-        `[x402] CDP facilitator auth unavailable until credentials are configured: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-
-  const facilitatorUrl = new URL(url);
-  const requestHost = facilitatorUrl.host;
-  const route = facilitatorUrl.pathname.replace(/\/$/, "");
-
-  return {
-    url,
-    createAuthHeaders: async () => {
-      const correlationHeaders = {
-        "Correlation-Context": createCorrelationHeader(),
-      };
-      const headers = {
-        verify: { ...correlationHeaders },
-        settle: { ...correlationHeaders },
-        supported: { ...correlationHeaders },
-        bazaar: { ...correlationHeaders },
-      };
-
-      if (credentials) {
-        try {
-          return {
-            verify: {
-              ...headers.verify,
-              Authorization: await createAuthHeader(
-                credentials.apiKeyId,
-                credentials.apiKeySecret,
-                "POST",
-                requestHost,
-                `${route}/verify`,
-              ),
-            },
-            settle: {
-              ...headers.settle,
-              Authorization: await createAuthHeader(
-                credentials.apiKeyId,
-                credentials.apiKeySecret,
-                "POST",
-                requestHost,
-                `${route}/settle`,
-              ),
-            },
-            supported: {
-              ...headers.supported,
-              Authorization: await createAuthHeader(
-                credentials.apiKeyId,
-                credentials.apiKeySecret,
-                "GET",
-                requestHost,
-                `${route}/supported`,
-              ),
-            },
-            bazaar: headers.bazaar,
-          };
-        } catch (error) {
-          console.warn(
-            `[x402] CDP facilitator auth disabled for this request: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
-
-      return headers;
-    },
-  };
-}
-
-function buildResourceServer(facilitatorClient: FacilitatorClient): x402ResourceServer {
+function buildResourceServer(facilitatorClient: HTTPFacilitatorClient): x402ResourceServer {
   return new x402ResourceServer(facilitatorClient)
     .register(CONFIG.caip2Network, new ExactEvmScheme())
     .registerExtension(bazaarResourceServerExtension);
 }
 
-async function initializeResourceServer(
-  facilitatorUrl: string,
-  facilitatorClient: FacilitatorClient,
-): Promise<x402ResourceServer> {
-  const resourceServer = buildResourceServer(facilitatorClient);
-  await resourceServer.initialize();
-  console.log(`[x402] Facilitator: ${facilitatorUrl}`);
-  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
-  return resourceServer;
-}
-
 /**
  * Builds and initializes the x402 resource server for our payment network,
  * with the "exact" EVM scheme (EIP-3009 USDC transfers) and Bazaar discovery.
- *
- * When the primary CDP facilitator cannot load supported payment kinds (common
- * when Railway CDP keys are malformed), falls back to the permissionless
- * facilitator so SSE/MCP can still serve paid tools.
  */
 export async function createResourceServer(): Promise<x402ResourceServer> {
-  const primaryClient = createFacilitatorClient();
-
-  try {
-    return await initializeResourceServer(CONFIG.facilitatorUrl, primaryClient);
-  } catch (primaryError) {
-    const canFallback =
-      CONFIG.usesCdpFacilitator && CONFIG.facilitatorUrl !== DEFAULT_PERMISSIONLESS_FACILITATOR;
-    if (!canFallback) {
-      throw primaryError;
-    }
-
-    console.warn(
-      `[x402] Primary facilitator failed (${primaryError instanceof Error ? primaryError.message : String(primaryError)}); ` +
-        `retrying with ${DEFAULT_PERMISSIONLESS_FACILITATOR}`,
-    );
-
-    const fallbackClient = new HTTPFacilitatorClient({ url: DEFAULT_PERMISSIONLESS_FACILITATOR });
-    return initializeResourceServer(DEFAULT_PERMISSIONLESS_FACILITATOR, fallbackClient);
-  }
+  const facilitatorClient = createFacilitatorClient();
+  const resourceServer = buildResourceServer(facilitatorClient);
+  await resourceServer.initialize();
+  console.log(`[x402] Facilitator: ${CONFIG.facilitatorUrl}`);
+  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
+  return resourceServer;
 }
 
 /**
