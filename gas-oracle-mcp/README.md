@@ -10,6 +10,8 @@
 |---|---|
 | Agents can't receive inbound HTTP (Stripe, GitHub, human replies) | **Webhook inbox** — POST events in, `drain_inbox` pulls them into the agent loop |
 | Agents can't browse the web reliably | **`fetch_url`** — returns clean text + SHA-256 content hash from any public URL |
+| Agents can't make outbound API calls | **`relay_post`** — relays POST/PUT/PATCH to public APIs with SSRF protection |
+| Agents need to crawl or research link graphs | **`extract_links`** — returns anchor links from any public page |
 
 This is real infrastructure, not a demo. Every agent loop that waits for external input will call `drain_inbox` over and over.
 
@@ -22,7 +24,10 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 | `create_inbox` | **free** | Creates `{ inboxId, secret, webhookUrl }` |
 | `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
 | `peek_inbox` | $0.002 | Read events without clearing |
+| `inbox_stats` | $0.001 | Count pending events without reading payloads |
 | `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
+| `extract_links` | $0.008 | Extract anchor links from a public page |
+| `relay_post` | $0.015 | Relay outbound POST/PUT/PATCH to a public API |
 | `ping` | **free** | Health check |
 
 ## Deploy in 10 minutes (no coding — works from your phone)

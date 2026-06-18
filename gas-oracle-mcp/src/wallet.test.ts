@@ -48,6 +48,25 @@ function assertPkcs8Pem(secret: string): void {
   assert.doesNotThrow(() => crypto.createPrivateKey({ key: secret, format: "pem", type: "pkcs8" }));
 }
 
+test("resolveCdpCredentials trims whitespace from injected secrets", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: "  primary-key-id  ",
+      CDP_PRIVATE_KEY: `  ${pkcs8Pem.replace(/\n/g, "\\n")}  `,
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+      CDP_WALLET_SECRET: "  wallet-secret  ",
+    },
+    () => {
+      const credentials = resolveCdpCredentials();
+      assert.equal(credentials.apiKeyId, "primary-key-id");
+      assert.equal(credentials.walletSecret, "wallet-secret");
+      assertPkcs8Pem(credentials.apiKeySecret);
+    },
+  );
+});
+
 test("resolveCdpCredentials accepts standard CDP SDK alias names", { concurrency: false }, () => {
   const { pkcs8Pem } = generatePrivateKeys();
   withEnv(

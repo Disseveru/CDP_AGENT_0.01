@@ -40,3 +40,12 @@ export function peekInbox(input: { inboxId: string; secret: string }) {
     events: result.events,
   };
 }
+
+export function getInboxStats(input: { inboxId: string; secret: string }) {
+  const stats = store.inboxStats(input.inboxId, input.secret);
+  return {
+    timestamp: new Date().toISOString(),
+    inboxId: input.inboxId,
+    ...stats,
+  };
+}
