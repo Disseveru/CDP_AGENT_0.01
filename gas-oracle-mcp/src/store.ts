@@ -110,6 +110,35 @@ export function drainInbox(
   return { drained: events.length, events };
 }
 
+/**
+ * Removes specific inbox events after a paid drain settles successfully.
+ * Keeps any events that arrived after the peek snapshot.
+ */
+export function removeInboxEventsByIds(
+  inboxId: string,
+  secret: string,
+  eventIds: string[],
+): { removed: number } {
+  const record = readInbox(inboxId);
+  if (!record) {
+    throw new Error(`Unknown inbox "${inboxId}"`);
+  }
+  if (record.secret !== secret) {
+    throw new Error("Invalid inbox secret");
+  }
+
+  if (eventIds.length === 0) {
+    return { removed: 0 };
+  }
+
+  const remove = new Set(eventIds);
+  const before = record.events.length;
+  record.events = pruneEvents(record.events.filter((event) => !remove.has(event.id)));
+  const removed = before - record.events.length;
+  writeInbox(record);
+  return { removed };
+}
+
 export function peekInbox(
   inboxId: string,
   secret: string,
