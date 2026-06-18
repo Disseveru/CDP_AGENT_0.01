@@ -192,3 +192,35 @@ export function inboxExists(inboxId: string): boolean {
   }
   return readInbox(inboxId) !== null;
 }
+
+export function inboxStats(
+  inboxId: string,
+  secret: string,
+): {
+  pending: number;
+  createdAt: string;
+  oldestEventAt: string | null;
+  newestEventAt: string | null;
+} {
+  assertValidInboxId(inboxId);
+  const record = readInbox(inboxId);
+  if (!record) {
+    throw new Error(`Unknown inbox "${inboxId}"`);
+  }
+  if (!secretsMatch(record.secret, secret)) {
+    throw new Error("Invalid inbox secret");
+  }
+
+  const events = pruneEvents(record.events);
+  if (events.length !== record.events.length) {
+    record.events = events;
+    writeInbox(record);
+  }
+
+  return {
+    pending: events.length,
+    createdAt: record.createdAt,
+    oldestEventAt: events[0]?.receivedAt ?? null,
+    newestEventAt: events.at(-1)?.receivedAt ?? null,
+  };
+}

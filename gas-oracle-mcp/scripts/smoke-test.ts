@@ -23,7 +23,16 @@ async function main(): Promise<void> {
   for (const tool of tools) {
     console.log(`- ${tool.name}`);
   }
-  const expected = ["create_inbox", "drain_inbox", "fetch_url", "peek_inbox", "ping"];
+  const expected = [
+    "create_inbox",
+    "drain_inbox",
+    "extract_links",
+    "fetch_url",
+    "inbox_stats",
+    "peek_inbox",
+    "ping",
+    "relay_post",
+  ];
   if (names.join(",") !== expected.join(",")) {
     throw new Error(`Expected tools [${expected.join(", ")}], got [${names.join(", ")}]`);
   }

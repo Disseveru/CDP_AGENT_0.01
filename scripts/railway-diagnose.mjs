@@ -7,6 +7,7 @@
  *   RAILWAY_TOKEN=... npm run railway:diagnose
  */
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,7 +49,12 @@ async function gql(token, query, variables) {
 function summarizeCredential(name, value) {
   if (!value) return `${name}: missing`;
   const issues = [];
-  if (/\s/.test(value.trim())) issues.push("contains whitespace");
+  const trimmed = value.trim();
+  if (name.includes("API_KEY") && /\s/.test(trimmed.replace(/^"+|"+$/g, ""))) {
+    issues.push("contains whitespace");
+  } else if (name.includes("PRIVATE") && /\s/.test(trimmed) && !trimmed.includes("\\n")) {
+    issues.push("contains whitespace");
+  }
   if (name.includes("PRIVATE") && !value.includes("BEGIN ") && !value.includes("\\n")) {
     issues.push("not PEM or escaped PEM");
   }
@@ -122,6 +128,30 @@ async function main() {
   }
   for (const key of ["CDP_API_KEY", "CDP_PRIVATE_KEY", "CDP_WALLET_SECRET"]) {
     console.log(summarizeCredential(key, vars[key]));
+  }
+
+  const tsxPath = join(repoRoot, "gas-oracle-mcp", "node_modules", ".bin", "tsx");
+  const diag = spawnSync(
+    tsxPath,
+    [
+      "--input-type=module",
+      "-e",
+      `process.env.CDP_API_KEY = ${JSON.stringify(vars.CDP_API_KEY || "")};
+       process.env.CDP_PRIVATE_KEY = ${JSON.stringify(vars.CDP_PRIVATE_KEY || "")};
+       const { diagnoseCdpApiCredentials } = await import("./gas-oracle-mcp/src/wallet.ts");
+       console.log(diagnoseCdpApiCredentials().issue);`,
+    ],
+    { cwd: repoRoot, encoding: "utf8", env: { ...process.env, NODE_NO_WARNINGS: "1" } },
+  );
+  const issue = diag.stdout.trim().split("\n").at(-1);
+  if (issue) {
+    console.log(`CDP facilitator credential check: ${issue}`);
+    if (issue === "invalid_private_key") {
+      console.log("  → Re-paste CDP_PRIVATE_KEY in Railway as a single line with \\n escapes.");
+    }
+    if (issue === "missing_api_key_id" || issue === "missing_private_key") {
+      console.log("  → Set CDP_API_KEY and CDP_PRIVATE_KEY (or CDP_API_KEY_ID / CDP_API_KEY_SECRET).");
+    }
   }
 
   const deploymentId = data.deployments?.edges?.[0]?.node?.id;

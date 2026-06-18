@@ -5,111 +5,12 @@
  * can cite or verify what was retrieved.
  */
 import crypto from "node:crypto";
-import dns from "node:dns/promises";
-import net from "node:net";
+
+import { assertSafePublicUrl, sanitizeRequestHeaders } from "./http-safety.js";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 20_000;
 const MAX_REDIRECTS = 5;
-
-const BLOCKED_HOSTNAMES = new Set([
-  "localhost",
-  "metadata.google.internal",
-  "metadata.goog",
-]);
-
-function normalizeIpv4(ip: string): string {
-  if (ip.startsWith("::ffff:")) {
-    const mapped = ip.slice(7);
-    if (net.isIPv4(mapped)) {
-      return mapped;
-    }
-  }
-  return ip;
-}
-
-function parseNumericHostname(hostname: string): string | null {
-  if (/^\d+$/.test(hostname)) {
-    const num = Number(hostname);
-    if (Number.isInteger(num) && num >= 0 && num <= 0xffffffff) {
-      return `${(num >>> 24) & 255}.${(num >>> 16) & 255}.${(num >>> 8) & 255}.${num & 255}`;
-    }
-  }
-
-  if (/^0x[0-9a-f]+$/i.test(hostname)) {
-    const num = Number(hostname);
-    if (Number.isInteger(num) && num >= 0 && num <= 0xffffffff) {
-      return `${(num >>> 24) & 255}.${(num >>> 16) & 255}.${(num >>> 8) & 255}.${num & 255}`;
-    }
-  }
-
-  return null;
-}
-
-function isPrivateIp(ip: string): boolean {
-  const normalized = normalizeIpv4(ip);
-
-  if (net.isIPv4(normalized)) {
-    const parts = normalized.split(".").map(Number);
-    if (parts[0] === 10) return true;
-    if (parts[0] === 127) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
-    if (parts[0] === 0) return true;
-    return false;
-  }
-
-  const lower = ip.toLowerCase();
-  if (lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80")) {
-    return true;
-  }
-  return false;
-}
-
-/** Blocks SSRF to localhost, cloud metadata, and private networks. */
-export async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error(`Invalid URL: "${rawUrl}"`);
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http:// and https:// URLs are allowed");
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error("URLs with embedded credentials are not allowed");
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (hostname.endsWith(".localhost") || BLOCKED_HOSTNAMES.has(hostname)) {
-    throw new Error("Blocked hostname");
-  }
-
-  const numericIp = parseNumericHostname(hostname);
-  if (numericIp && isPrivateIp(numericIp)) {
-    throw new Error("Blocked private IP address");
-  }
-
-  const literalIp = net.isIP(hostname);
-  if (literalIp && isPrivateIp(hostname)) {
-    throw new Error("Blocked private IP address");
-  }
-
-  if (!literalIp && !numericIp) {
-    const records = await dns.lookup(hostname, { all: true });
-    for (const { address } of records) {
-      if (isPrivateIp(address)) {
-        throw new Error(`Hostname ${hostname} resolves to blocked address ${address}`);
-      }
-    }
-  }
-
-  return parsed;
-}
 
 function stripHtml(html: string): { title: string | null; text: string } {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -187,16 +88,7 @@ export interface FetchUrlResult {
 export async function fetchUrl(input: FetchUrlInput): Promise<FetchUrlResult> {
   const started = Date.now();
   let current = await assertSafePublicUrl(input.url);
-
-  const blockedHeaders = new Set(["host", "connection", "content-length", "transfer-encoding"]);
-  const extraHeaders: Record<string, string> = {};
-  if (input.headers) {
-    for (const [key, value] of Object.entries(input.headers)) {
-      if (!blockedHeaders.has(key.toLowerCase())) {
-        extraHeaders[key] = value;
-      }
-    }
-  }
+  const extraHeaders = sanitizeRequestHeaders(input.headers);
 
   let res: Response | null = null;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -268,6 +160,63 @@ export async function fetchUrl(input: FetchUrlInput): Promise<FetchUrlResult> {
     text,
     textLength: text.length,
     truncated,
+    fetchedInMs: Date.now() - started,
+  };
+}
+
+/** Returns raw HTML/text bytes for link extraction and other downstream tools. */
+export async function fetchRawContent(input: FetchUrlInput): Promise<{
+  url: string;
+  finalUrl: string;
+  status: number;
+  contentType: string | null;
+  raw: string;
+  fetchedInMs: number;
+}> {
+  const started = Date.now();
+  let current = await assertSafePublicUrl(input.url);
+  const extraHeaders = sanitizeRequestHeaders(input.headers);
+
+  let res: Response | null = null;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      res = await fetch(current.toString(), {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "AgentWire/1.0 (x402 MCP; +https://x402.org)",
+          Accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.8",
+          ...extraHeaders,
+        },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) break;
+      current = await assertSafePublicUrl(new URL(location, current).toString());
+      continue;
+    }
+    break;
+  }
+
+  if (!res) throw new Error("Fetch failed without a response");
+
+  const contentType = res.headers.get("content-type");
+  const { bytes } = await readResponseBody(res);
+  const charset = contentType?.match(/charset=([^;]+)/i)?.[1]?.trim() ?? "utf-8";
+
+  return {
+    url: input.url,
+    finalUrl: current.toString(),
+    status: res.status,
+    contentType,
+    raw: bytes.toString(charset as BufferEncoding),
     fetchedInMs: Date.now() - started,
   };
 }

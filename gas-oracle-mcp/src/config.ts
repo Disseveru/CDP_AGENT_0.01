@@ -70,8 +70,11 @@ export const CONFIG = {
     discovery: process.env.PRICE_DISCOVERY || "$0.001",
     drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",
     peekInbox: process.env.PRICE_PEEK_INBOX || "$0.002",
+    inboxStats: process.env.PRICE_INBOX_STATS || "$0.001",
     fetchUrl: process.env.PRICE_FETCH_URL || "$0.012",
+    extractLinks: process.env.PRICE_EXTRACT_LINKS || "$0.008",
+    relayPost: process.env.PRICE_RELAY_POST || "$0.015",
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.0.0",
+  serviceVersion: "1.1.0",
 } as const;
