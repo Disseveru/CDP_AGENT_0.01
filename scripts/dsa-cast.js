@@ -6,6 +6,7 @@ dotenv.config();
 
 const {
   buildDsaAccount,
+  buildDsaAccountsForChains,
   buildRecipe,
   castSpells,
   createDsaClient,
@@ -13,9 +14,11 @@ const {
   formatChainLabel,
   listDsaAccounts,
   listRecipes,
+  loadDsaChainState,
   loadDsaState,
   parseSpellsInput,
   resolveDsaChainId,
+  saveDsaChainState,
   saveDsaState,
 } = require("../lib/instadapp");
 
@@ -26,6 +29,7 @@ Usage:
   node scripts/dsa-cast.js status
   node scripts/dsa-cast.js accounts
   node scripts/dsa-cast.js build
+  node scripts/dsa-cast.js build-chains
   node scripts/dsa-cast.js use <dsaId>
   node scripts/dsa-cast.js recipes
   node scripts/dsa-cast.js recipe <name> [--amountWei <wei>] [--to <address>]
@@ -127,7 +131,42 @@ async function main() {
   if (command === "build") {
     const txHash = await buildDsaAccount(dsa, web3);
     const accounts = await listDsaAccounts(dsa, signerAddress);
+    const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
+    if (instance) {
+      saveDsaChainState(
+        chainId,
+        {
+          dsaId: instance.id,
+          dsaAddress: instance.address,
+          lastBuildTx: txHash,
+        },
+        signerAddress,
+      );
+    }
     console.log(JSON.stringify({ txHash, accounts }, null, 2));
+    return;
+  }
+
+  if (command === "build-chains") {
+    const result = await buildDsaAccountsForChains();
+    console.log(JSON.stringify(result, null, 2));
+
+    const needsGas = result.chains.filter((entry) => entry.status === "needs_gas");
+    if (needsGas.length > 0) {
+      console.log("");
+      console.log("Fund this DSA signer address with native gas on each chain:");
+      console.log(`  ${result.signerAddress}`);
+      console.log("");
+      for (const entry of needsGas) {
+        const token = entry.chain === "polygon" ? "POL" : "ETH";
+        console.log(
+          `  - ${entry.chain}: send ~${entry.requiredNative || "a small amount of"} ${token}`,
+        );
+      }
+      console.log("");
+      console.log("Note: the CDP Base Paymaster only sponsors CDP Smart Wallet gas on Base.");
+      console.log("DSA account creation uses your DSA_PRIVATE_KEY wallet and needs native gas.");
+    }
     return;
   }
 
@@ -138,13 +177,14 @@ async function main() {
     }
 
     const instance = await dsa.setInstance(dsaId);
-    saveDsaState({
-      ...state,
-      chainId: resolveDsaChainId(),
-      dsaId: instance.id,
-      dsaAddress: instance.address,
+    saveDsaChainState(
+      chainId,
+      {
+        dsaId: instance.id,
+        dsaAddress: instance.address,
+      },
       signerAddress,
-    });
+    );
 
     console.log(JSON.stringify({ instance }, null, 2));
     return;
