@@ -9,6 +9,9 @@
     "start:mcp": "node gas-oracle-mcp/dist/server.js",
     "skills:install": "npx skills add coinbase/agentic-wallet-skills --agent cursor -y",
     "skills:update": "npx skills update agentic-wallet -y",
+    "skills:sync:agentic-market": "node scripts/sync-agentic-market-skill.mjs",
+    "bootstrap:agent": "node scripts/bootstrap-agent.mjs",
+    "postinstall": "node scripts/sync-agentic-market-skill.mjs",
     "dsa": "node scripts/dsa-cast.js",
     "dsa:accounts": "node scripts/dsa-cast.js accounts",
     "dsa:build-chains": "node scripts/dsa-cast.js build-chains",
@@ -16,7 +19,7 @@
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js scripts/sync-agentic-market-skill.test.mjs"
   },
   "repository": {
     "type": "git",
