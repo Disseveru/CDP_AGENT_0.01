@@ -13,7 +13,6 @@ import fs from "node:fs";
 
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { x402Client } from "@x402/core/client";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapMCPClientWithPayment } from "@x402/mcp";
@@ -22,6 +21,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 
 import { resolveCdpCredentials } from "../src/wallet.js";
+import { createStreamableMcpTransport } from "./mcp-transport.js";
 
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:4021/mcp";
 const USDC_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   const buyer = await getFundedBuyer();
 
   const freeClient = new Client({ name: "agentwire-buyer", version: "1.0.0" });
-  await freeClient.connect(new StreamableHTTPClientTransport(new URL(SERVER_URL)));
+  await freeClient.connect(createStreamableMcpTransport(SERVER_URL));
 
   console.log("\n=== Step 1: create_inbox (free) ===");
   const created = await freeClient.callTool({ name: "create_inbox", arguments: {} });
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
       return true;
     },
   });
-  await x402Mcp.connect(new StreamableHTTPClientTransport(new URL(SERVER_URL)));
+  await x402Mcp.connect(createStreamableMcpTransport(SERVER_URL));
 
   console.log("\n=== Step 3: drain_inbox (paid) ===");
   const drained = await x402Mcp.callTool(
