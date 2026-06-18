@@ -3,4 +3,5 @@ dist/
 .env
 wallet_data.json
 .buyer_key
+.smart_buyer_wallet.json
 data/
