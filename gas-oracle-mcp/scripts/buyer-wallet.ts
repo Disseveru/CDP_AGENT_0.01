@@ -179,7 +179,7 @@ export async function createMainnetPaymasterBuyer(minOwnerUsdc = 25_000n) {
     functionName: "balanceOf",
     args: [walletProvider.getAddress() as `0x${string}`],
   });
-  const ownerBalance = await publicClient.readContract({
+  let ownerBalance = await publicClient.readContract({
     address: USDC_BY_NETWORK["base-mainnet"],
     abi: erc20Abi,
     functionName: "balanceOf",
