@@ -533,7 +533,6 @@ async function runDsaCommand(command) {
   }
 
   const { dsa, web3, chainId, signerAddress } = instadapp.createDsaClient();
-  const state = instadapp.loadDsaState();
   const autoBuild = args.includes("--build");
   const jsonText = args.filter((token) => token !== "--build").join(" ").trim();
 
@@ -556,7 +555,7 @@ async function runDsaCommand(command) {
     instadapp.parseSpellsInput(jsonText);
     const ensured = await instadapp.ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild,
-      dsaId: state.dsaId,
+      chainId,
     });
     const result = await instadapp.castSpells(dsa, web3, jsonText, {
       dryRun: subcommand === "encode",
