@@ -24,8 +24,53 @@ export interface CdpCredentials {
   walletSecret: string;
 }
 
+export type CdpApiCredentialIssue =
+  | "ok"
+  | "missing_api_key_id"
+  | "missing_private_key"
+  | "invalid_private_key";
+
+export interface CdpApiCredentialDiagnostics {
+  issue: CdpApiCredentialIssue;
+  apiKeySource?: "CDP_API_KEY" | "CDP_API_KEY_ID";
+  privateKeySource?: "CDP_PRIVATE_KEY" | "CDP_API_KEY_SECRET";
+}
+
 function resolveEnvAlias(primaryName: string, fallbackName: string): string | undefined {
-  return process.env[primaryName] || process.env[fallbackName];
+  const raw = process.env[primaryName] || process.env[fallbackName];
+  if (raw === undefined) {
+    return undefined;
+  }
+  const trimmed = stripWrappingQuotes(raw).trim();
+  return trimmed || undefined;
+}
+
+function resolveApiKeyId(): { value?: string; source?: "CDP_API_KEY" | "CDP_API_KEY_ID" } {
+  if (process.env.CDP_API_KEY?.trim()) {
+    return { value: normalizeApiKeyId(process.env.CDP_API_KEY), source: "CDP_API_KEY" };
+  }
+  if (process.env.CDP_API_KEY_ID?.trim()) {
+    return { value: normalizeApiKeyId(process.env.CDP_API_KEY_ID), source: "CDP_API_KEY_ID" };
+  }
+  return {};
+}
+
+function resolvePrivateKeyRaw(): {
+  value?: string;
+  source?: "CDP_PRIVATE_KEY" | "CDP_API_KEY_SECRET";
+} {
+  if (process.env.CDP_PRIVATE_KEY?.trim()) {
+    return { value: process.env.CDP_PRIVATE_KEY, source: "CDP_PRIVATE_KEY" };
+  }
+  if (process.env.CDP_API_KEY_SECRET?.trim()) {
+    return { value: process.env.CDP_API_KEY_SECRET, source: "CDP_API_KEY_SECRET" };
+  }
+  return {};
+}
+
+/** Collapses stray whitespace Railway and secret managers often inject into API key IDs. */
+function normalizeApiKeyId(raw: string): string {
+  return stripWrappingQuotes(raw).replace(/\s+/g, "");
 }
 
 function stripWrappingQuotes(secret: string): string {
@@ -92,7 +137,12 @@ function decodeBase64DerPrivateKey(secret: string): string | undefined {
 }
 
 function normalizePrivateKeySecret(rawSecret: string): string {
-  let secret = stripWrappingQuotes(rawSecret).replace(/\\n/g, "\n").trim();
+  let secret = stripWrappingQuotes(rawSecret).replace(/\\\\n/g, "\n").replace(/\\n/g, "\n").trim();
+  secret = secret.replace(/\r\n/g, "\n").replace(/\u00a0/g, " ");
+
+  if (secret.includes("BEGIN ") && !secret.includes("\n")) {
+    secret = rebuildSingleLinePem(secret) ?? rebuildSingleLinePem(secret.replace(/ +/g, "")) ?? secret;
+  }
 
   if (!secret.includes("\n")) {
     secret = rebuildSingleLinePem(secret) ?? secret;
@@ -123,15 +173,39 @@ function canonicalizePrivateKeySecret(secret: string): string {
   return secret;
 }
 
+export function diagnoseCdpApiCredentials(): CdpApiCredentialDiagnostics {
+  const { value: apiKeyId, source: apiKeySource } = resolveApiKeyId();
+  const { value: rawSecret, source: privateKeySource } = resolvePrivateKeyRaw();
+
+  if (!apiKeyId) {
+    return { issue: "missing_api_key_id" };
+  }
+  if (!rawSecret) {
+    return { issue: "missing_private_key", apiKeySource };
+  }
+
+  try {
+    const normalizedSecret = normalizePrivateKeySecret(rawSecret);
+    const apiKeySecret = canonicalizePrivateKeySecret(normalizedSecret);
+    if (!apiKeySecret.includes("BEGIN PRIVATE KEY")) {
+      return { issue: "invalid_private_key", apiKeySource, privateKeySource };
+    }
+    crypto.createPrivateKey({ key: apiKeySecret, format: "pem", type: "pkcs8" });
+    return { issue: "ok", apiKeySource, privateKeySource };
+  } catch {
+    return { issue: "invalid_private_key", apiKeySource, privateKeySource };
+  }
+}
+
 /**
  * Reads CDP credentials from the environment, normalizing single-line PEM
  * secrets (as injected by most cloud secret managers) into valid multi-line
  * PEM, and converting EC (sec1) keys to the pkcs8 form the CDP v2 SDK expects.
  */
 export function resolveCdpCredentials(): CdpCredentials {
-  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
-  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
-  const walletSecret = process.env.CDP_WALLET_SECRET;
+  const { value: apiKeyId } = resolveApiKeyId();
+  const { value: rawSecret } = resolvePrivateKeyRaw();
+  const walletSecret = process.env.CDP_WALLET_SECRET?.trim();
 
   if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
@@ -150,23 +224,20 @@ export function resolveCdpCredentials(): CdpCredentials {
  * Returns undefined when credentials are missing or the private key is invalid.
  */
 export function resolveCdpApiCredentials(): { apiKeyId: string; apiKeySecret: string } | undefined {
-  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
-  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
+  const diagnostics = diagnoseCdpApiCredentials();
+  if (diagnostics.issue !== "ok") {
+    return undefined;
+  }
+
+  const { value: apiKeyId } = resolveApiKeyId();
+  const { value: rawSecret } = resolvePrivateKeyRaw();
   if (!apiKeyId || !rawSecret) {
     return undefined;
   }
 
-  try {
-    const normalizedSecret = normalizePrivateKeySecret(rawSecret);
-    const apiKeySecret = canonicalizePrivateKeySecret(normalizedSecret);
-    if (!apiKeySecret.includes("BEGIN PRIVATE KEY")) {
-      return undefined;
-    }
-    crypto.createPrivateKey({ key: apiKeySecret, format: "pem", type: "pkcs8" });
-    return { apiKeyId, apiKeySecret };
-  } catch {
-    return undefined;
-  }
+  const normalizedSecret = normalizePrivateKeySecret(rawSecret);
+  const apiKeySecret = canonicalizePrivateKeySecret(normalizedSecret);
+  return { apiKeyId, apiKeySecret };
 }
 
 function loadPersistedAddress(): `0x${string}` | undefined {

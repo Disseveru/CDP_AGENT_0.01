@@ -5,7 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { resolveCdpApiCredentials, resolveCdpCredentials } from "./wallet.js";
+import {
+  diagnoseCdpApiCredentials,
+  resolveCdpApiCredentials,
+  resolveCdpCredentials,
+} from "./wallet.js";
 
 const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXED_PAY_TO_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189";
@@ -160,7 +164,46 @@ test("resolveCdpApiCredentials accepts API key aliases without wallet secret", {
   );
 });
 
-test("resolveCdpApiCredentials returns undefined for malformed private keys", { concurrency: false }, () => {
+test("resolveCdpApiCredentials strips stray whitespace from API key IDs", { concurrency: false }, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
+  withEnv(
+    {
+      CDP_API_KEY: "  primary-key-id \n",
+      CDP_PRIVATE_KEY: pkcs8Pem.replace(/\n/g, "\\n"),
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+    },
+    () => {
+      const credentials = resolveCdpApiCredentials();
+      assert.ok(credentials);
+      assert.equal(credentials?.apiKeyId, "primary-key-id");
+      assert.equal(diagnoseCdpApiCredentials().issue, "ok");
+    },
+  );
+});
+
+test("resolveCdpApiCredentials accepts single-line PEM with spaces instead of newlines", {
+  concurrency: false,
+}, () => {
+  const { pkcs8Pem } = generatePrivateKeys();
+  const singleLine = pkcs8Pem.replace(/\n/g, " ");
+  withEnv(
+    {
+      CDP_API_KEY: "space-pem-key-id",
+      CDP_PRIVATE_KEY: singleLine,
+      CDP_API_KEY_ID: undefined,
+      CDP_API_KEY_SECRET: undefined,
+    },
+    () => {
+      const credentials = resolveCdpApiCredentials();
+      assert.ok(credentials);
+      assert.equal(credentials?.apiKeyId, "space-pem-key-id");
+      assertPkcs8Pem(credentials!.apiKeySecret);
+    },
+  );
+});
+
+test("diagnoseCdpApiCredentials reports invalid private keys", { concurrency: false }, () => {
   withEnv(
     {
       CDP_API_KEY: "broken-key-id",
@@ -170,6 +213,7 @@ test("resolveCdpApiCredentials returns undefined for malformed private keys", { 
     },
     () => {
       assert.equal(resolveCdpApiCredentials(), undefined);
+      assert.equal(diagnoseCdpApiCredentials().issue, "invalid_private_key");
     },
   );
 });
