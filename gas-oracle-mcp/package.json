@@ -12,10 +12,10 @@
     "paid-test": "tsx scripts/paid-client-test.ts",
     "paid-test:mainnet": "tsx scripts/mainnet-paid-test.ts",
     "sse-test": "tsx scripts/sse-test.ts",
-    "test": "node --import tsx --test src/wallet.test.ts src/store.test.ts"
+    "test": "node --import tsx --test src/wallet.test.ts src/store.test.ts src/services.test.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "ISC",
   "dependencies": {

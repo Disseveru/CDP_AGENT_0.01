@@ -26,7 +26,9 @@ import { z } from "zod";
 
 import { CONFIG } from "./config.js";
 import { fetchUrl } from "./fetch.js";
-import { createInbox, peekInbox } from "./inbox.js";
+import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
+import { extractLinks } from "./links.js";
+import { relayPost } from "./relay.js";
 import { appendEvent, inboxExists, removeInboxEventsByIds } from "./store.js";
 import {
   buildAccepts,
@@ -141,6 +143,99 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
         headers: args.headers as Record<string, string> | undefined,
       }),
   },
+  {
+    name: "inbox_stats",
+    description:
+      `Check how many webhook events are waiting in an inbox without reading their contents. ` +
+      `Cheaper than peek_inbox when you only need a count before draining. ` +
+      `Costs ${CONFIG.prices.inboxStats} USDC per call.`,
+    price: CONFIG.prices.inboxStats,
+    zodShape: {
+      inboxId: z.string().describe("Inbox ID returned by create_inbox"),
+      secret: z.string().describe("Inbox secret returned by create_inbox"),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        inboxId: { type: "string" },
+        secret: { type: "string" },
+      },
+      required: ["inboxId", "secret"],
+    },
+    example: { inboxId: "abc123", secret: "your-secret-here" },
+    outputExample: { pending: 3, oldestEventAt: "2026-06-12T00:00:00.000Z", newestEventAt: "2026-06-12T01:00:00.000Z" },
+    handler: async (args) =>
+      getInboxStats({ inboxId: String(args.inboxId), secret: String(args.secret) }),
+  },
+  {
+    name: "extract_links",
+    description:
+      `Fetch a public web page and extract anchor links for research or crawling workflows. ` +
+      `Returns href + link text, optionally filtered to same-origin links. ` +
+      `Costs ${CONFIG.prices.extractLinks} USDC per call.`,
+    price: CONFIG.prices.extractLinks,
+    zodShape: {
+      url: z.string().url().describe("Public http(s) URL to scan for links"),
+      sameOrigin: z.boolean().optional().describe("When true, only return links on the same hostname"),
+      limit: z.number().int().min(1).max(500).optional().describe("Max links to return (default 100)"),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        sameOrigin: { type: "boolean" },
+        limit: { type: "integer", minimum: 1, maximum: 500 },
+      },
+      required: ["url"],
+    },
+    example: { url: "https://example.com", sameOrigin: true, limit: 50 },
+    outputExample: {
+      linkCount: 2,
+      links: [{ href: "https://example.com/about", text: "About" }],
+    },
+    handler: async (args) =>
+      extractLinks({
+        url: String(args.url),
+        sameOrigin: args.sameOrigin as boolean | undefined,
+        limit: args.limit as number | undefined,
+      }),
+  },
+  {
+    name: "relay_post",
+    description:
+      `Relay an outbound HTTP POST/PUT/PATCH to a public API on behalf of an agent that cannot ` +
+      `make direct outbound requests. Returns the upstream status and response body. ` +
+      `Costs ${CONFIG.prices.relayPost} USDC per call.`,
+    price: CONFIG.prices.relayPost,
+    zodShape: {
+      url: z.string().url().describe("Public http(s) URL to call"),
+      method: z.enum(["POST", "PUT", "PATCH"]).optional().describe("HTTP method (default POST)"),
+      headers: z
+        .record(z.string())
+        .optional()
+        .describe('Optional request headers, e.g. {"Authorization":"Bearer ..."}'),
+      body: z.unknown().optional().describe("JSON object or string request body"),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        method: { type: "string", enum: ["POST", "PUT", "PATCH"] },
+        headers: { type: "object", additionalProperties: { type: "string" } },
+        body: {},
+      },
+      required: ["url"],
+    },
+    example: { url: "https://httpbin.org/post", method: "POST", body: { hello: "agent" } },
+    outputExample: { status: 200, responseBody: { json: { hello: "agent" } } },
+    handler: async (args) =>
+      relayPost({
+        url: String(args.url),
+        method: args.method as "POST" | "PUT" | "PATCH" | undefined,
+        headers: args.headers as Record<string, string> | undefined,
+        body: args.body,
+      }),
+  },
 ];
 
 interface PreparedTool {
@@ -240,7 +335,7 @@ function buildServiceCard(state: RuntimeState): Record<string, unknown> {
     service: CONFIG.serviceName,
     version: CONFIG.serviceVersion,
     status: state.status,
-    tagline: "Webhook inbox + web fetch for autonomous agents",
+    tagline: "Webhook inbox + web fetch + outbound relay for autonomous agents",
     protocol: "MCP over Streamable HTTP + SSE + x402 v2 payments",
     endpoint: `${CONFIG.publicUrl}/mcp`,
     sseEndpoint: `${CONFIG.publicUrl}/sse`,
@@ -388,7 +483,7 @@ function buildMcpServer(state: RuntimeState): McpServer {
           description: definition.description,
           mimeType: "application/json",
           serviceName: CONFIG.serviceName,
-          tags: ["webhook", "inbox", "fetch", "agent-infrastructure", "relay"],
+          tags: ["webhook", "inbox", "fetch", "relay", "agent-infrastructure"],
         },
         extensions,
         hooks: {

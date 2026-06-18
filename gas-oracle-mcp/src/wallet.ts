@@ -128,10 +128,14 @@ function canonicalizePrivateKeySecret(secret: string): string {
  * secrets (as injected by most cloud secret managers) into valid multi-line
  * PEM, and converting EC (sec1) keys to the pkcs8 form the CDP v2 SDK expects.
  */
+function trimEnvValue(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
 export function resolveCdpCredentials(): CdpCredentials {
-  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
-  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
-  const walletSecret = process.env.CDP_WALLET_SECRET;
+  const apiKeyId = trimEnvValue(resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID"));
+  const rawSecret = trimEnvValue(resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET"));
+  const walletSecret = trimEnvValue(process.env.CDP_WALLET_SECRET);
 
   if (!apiKeyId || !rawSecret || !walletSecret) {
     throw new Error(
@@ -150,8 +154,8 @@ export function resolveCdpCredentials(): CdpCredentials {
  * Returns undefined when credentials are missing or the private key is invalid.
  */
 export function resolveCdpApiCredentials(): { apiKeyId: string; apiKeySecret: string } | undefined {
-  const apiKeyId = resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID");
-  const rawSecret = resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET");
+  const apiKeyId = trimEnvValue(resolveEnvAlias("CDP_API_KEY", "CDP_API_KEY_ID"));
+  const rawSecret = trimEnvValue(resolveEnvAlias("CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET"));
   if (!apiKeyId || !rawSecret) {
     return undefined;
   }

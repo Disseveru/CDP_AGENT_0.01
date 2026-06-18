@@ -47,12 +47,34 @@ async function gql(token, query, variables) {
 
 function summarizeCredential(name, value) {
   if (!value) return `${name}: missing`;
+  const trimmed = value.trim();
   const issues = [];
-  if (/\s/.test(value.trim())) issues.push("contains whitespace");
-  if (name.includes("PRIVATE") && !value.includes("BEGIN ") && !value.includes("\\n")) {
+  if (trimmed.length !== value.length) issues.push("leading/trailing whitespace");
+  if (/\s/.test(trimmed.replace(/\\n/g, "")) && !trimmed.includes("BEGIN ")) {
+    issues.push("contains interior whitespace");
+  }
+  if (name.includes("PRIVATE") && !trimmed.includes("BEGIN ") && !trimmed.includes("\\n")) {
     issues.push("not PEM or escaped PEM");
   }
   return `${name}: len=${value.length}${issues.length ? ` (${issues.join(", ")})` : " (ok format)"}`;
+}
+
+function summarizeBuildLogs(messages) {
+  const issues = [];
+  const warnings = messages.filter((m) => /warn|EBADENGINE|deprecated|vulnerabilit/i.test(m));
+  const errors = messages.filter((m) => /error|failed/i.test(m) && !/0 errors/i.test(m));
+
+  if (messages.some((m) => /EBADENGINE.*node: '>=22'/i.test(m))) {
+    issues.push("Node 20 runtime — some deps prefer Node 22 (see gas-oracle-mcp/.node-version)");
+  }
+  if (messages.some((m) => /> tsc/i.test(m) || /npm run build/i.test(m))) {
+    issues.push("TypeScript build ran");
+  }
+  if (messages.some((m) => /Healthcheck succeeded/i.test(m))) {
+    issues.push("Deploy healthcheck passed");
+  }
+
+  return { warnings: warnings.slice(-5), errors: errors.slice(-5), summary: issues };
 }
 
 async function main() {
@@ -137,7 +159,7 @@ async function main() {
 
   const bootIssues = (logsData.deploymentLogs || [])
     .map((l) => l.message)
-    .filter((m) => /error|failed|unavailable|401/i.test(m));
+    .filter((m) => /error|failed|unavailable|401|warn.*x402/i.test(m));
 
   if (bootIssues.length) {
     console.log("");
@@ -148,6 +170,31 @@ async function main() {
     console.log("");
     console.log("If CDP credentials show whitespace issues, re-paste them in Railway → Variables.");
     console.log("Use single-line PEM with \\n escapes for CDP_PRIVATE_KEY.");
+  }
+
+  const buildData = await gql(
+    token,
+    `query($deploymentId: String!, $limit: Int) {
+      buildLogs(deploymentId: $deploymentId, limit: $limit) { message }
+    }`,
+    { deploymentId, limit: 200 },
+  );
+
+  const buildMessages = (buildData.buildLogs || []).map((l) => l.message).filter(Boolean);
+  const build = summarizeBuildLogs(buildMessages);
+
+  if (build.summary.length || build.warnings.length) {
+    console.log("");
+    console.log("Latest build summary:");
+    for (const line of build.summary) console.log(`  ✓ ${line}`);
+    if (build.warnings.length) {
+      console.log("  Build warnings (last 5):");
+      for (const line of build.warnings) console.log(`    ${line.split("\n")[0]}`);
+    }
+    if (build.errors.length) {
+      console.log("  Build errors:");
+      for (const line of build.errors) console.log(`    ${line.split("\n")[0]}`);
+    }
   }
 }
 
