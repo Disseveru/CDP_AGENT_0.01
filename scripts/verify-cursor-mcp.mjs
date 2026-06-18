@@ -76,14 +76,14 @@ async function main() {
   );
 
   results.push(
-    await check("/sse endpoint exists (deploy includes SSE transport)", async () => {
-      const res = await fetch(`${railwayUrl}/`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json();
-      if (!body.sseEndpoint) {
-        throw new Error(
-          "sseEndpoint missing from discovery — Railway is still on an old build. Redeploy the latest main branch.",
-        );
+    await check("/sse endpoint deployed (not 404)", async () => {
+      const res = await fetch(`${railwayUrl}/sse`);
+      if (res.status === 404) {
+        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+      }
+      // 401 without a key means the SSE route exists and MCP_API_KEY auth is enabled.
+      if (res.status !== 401 && res.status !== 503) {
+        throw new Error(`Expected 401 or 503, got ${res.status}`);
       }
     }),
   );
