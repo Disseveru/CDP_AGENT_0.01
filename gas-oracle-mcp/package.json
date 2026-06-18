@@ -10,7 +10,8 @@
     "dev": "tsx src/server.ts",
     "smoke-test": "tsx scripts/smoke-test.ts",
     "paid-test": "tsx scripts/paid-client-test.ts",
-    "sse-test": "tsx scripts/sse-test.ts"
+    "sse-test": "tsx scripts/sse-test.ts",
+    "test": "node --import tsx --test src/wallet.test.ts src/store.test.ts"
   },
   "engines": {
     "node": ">=20"
@@ -40,6 +41,12 @@
   "overrides": {
     "@privy-io/server-auth": "^1.32.5",
     "viem": "^2.52.2",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "bigint-buffer": "npm:four-flap-bigint-buffer@^1.1.6",
+    "bn.js": "^5.2.3",
+    "elliptic": "^6.6.1",
+    "form-data": "^4.0.6",
+    "qs": "^6.14.1",
+    "uuid": "^11.1.1"
   }
 }
