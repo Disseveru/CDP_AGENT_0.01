@@ -27,7 +27,7 @@ import {
   validateDiscoveryExtensionSpec,
 } from "@x402/extensions/bazaar";
 
-import { CONFIG } from "./config.js";
+import { CONFIG, DEFAULT_PERMISSIONLESS_FACILITATOR } from "./config.js";
 import { resolveCdpApiCredentials } from "./wallet.js";
 
 const SERVICE_CARD_OUTPUT_SCHEMA = {
@@ -123,17 +123,44 @@ function buildResourceServer(facilitatorClient: HTTPFacilitatorClient): x402Reso
     .registerExtension(bazaarResourceServerExtension);
 }
 
+async function initializeResourceServer(
+  facilitatorUrl: string,
+  facilitatorClient: HTTPFacilitatorClient,
+): Promise<x402ResourceServer> {
+  const resourceServer = buildResourceServer(facilitatorClient);
+  await resourceServer.initialize();
+  console.log(`[x402] Facilitator: ${facilitatorUrl}`);
+  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
+  return resourceServer;
+}
+
 /**
  * Builds and initializes the x402 resource server for our payment network,
  * with the "exact" EVM scheme (EIP-3009 USDC transfers) and Bazaar discovery.
+ *
+ * When the primary CDP facilitator cannot load supported payment kinds, falls
+ * back to the permissionless facilitator so paid tools can still initialize.
  */
 export async function createResourceServer(): Promise<x402ResourceServer> {
-  const facilitatorClient = createFacilitatorClient();
-  const resourceServer = buildResourceServer(facilitatorClient);
-  await resourceServer.initialize();
-  console.log(`[x402] Facilitator: ${CONFIG.facilitatorUrl}`);
-  console.log(`[x402] Payment network: ${CONFIG.caip2Network} (${CONFIG.network})`);
-  return resourceServer;
+  const primaryClient = createFacilitatorClient();
+
+  try {
+    return await initializeResourceServer(CONFIG.facilitatorUrl, primaryClient);
+  } catch (primaryError) {
+    const canFallback =
+      CONFIG.usesCdpFacilitator && CONFIG.facilitatorUrl !== DEFAULT_PERMISSIONLESS_FACILITATOR;
+    if (!canFallback) {
+      throw primaryError;
+    }
+
+    console.warn(
+      `[x402] Primary facilitator failed (${primaryError instanceof Error ? primaryError.message : String(primaryError)}); ` +
+        `retrying with ${DEFAULT_PERMISSIONLESS_FACILITATOR}`,
+    );
+
+    const fallbackClient = new HTTPFacilitatorClient({ url: DEFAULT_PERMISSIONLESS_FACILITATOR });
+    return initializeResourceServer(DEFAULT_PERMISSIONLESS_FACILITATOR, fallbackClient);
+  }
 }
 
 /**

@@ -25,8 +25,9 @@ const AGENTKIT_NETWORK_ID: Record<PaymentNetwork, string> = {
 /** CDP facilitator (recommended for testnet and mainnet). */
 export const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
 
-/** Signup-free testnet facilitator from the CDP sellers quickstart. */
-export const X402_ORG_TESTNET_FACILITATOR = "https://x402.org/facilitator";
+/** Signup-free permissionless facilitator fallback when CDP init fails. */
+export const DEFAULT_PERMISSIONLESS_FACILITATOR = "https://facilitator.xpay.sh";
+
 
 function isCdpFacilitatorUrl(url: string): boolean {
   try {

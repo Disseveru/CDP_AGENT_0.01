@@ -76,10 +76,26 @@ async function main() {
   );
 
   results.push(
+    await check("/sse endpoint exists (deploy includes SSE transport)", async () => {
+      const res = await fetch(`${railwayUrl}/`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (!body.sseEndpoint) {
+        throw new Error(
+          "sseEndpoint missing from discovery — Railway is still on an old build. Redeploy the latest main branch.",
+        );
+      }
+    }),
+  );
+
+  results.push(
     await check("/sse without API key should be blocked", async () => {
       const res = await fetch(`${railwayUrl}/sse`);
+      if (res.status === 404) {
+        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+      }
       if (res.status !== 401) {
-        throw new Error(`Expected 401, got ${res.status}`);
+        throw new Error(`Expected 401, got ${res.status} (add MCP_API_KEY on Railway and redeploy)`);
       }
     }),
   );
@@ -93,6 +109,15 @@ async function main() {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      if (res.status === 404) {
+        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+      }
+      if (res.status === 401) {
+        throw new Error("401 — MCP_API_KEY on Railway must match the key from npm run setup:cursor-mcp");
+      }
+      if (res.status === 503) {
+        throw new Error("503 — server up but CDP/x402 not ready yet; check Railway logs");
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("text/event-stream")) {
@@ -109,7 +134,10 @@ async function main() {
   }
 
   console.log("Some checks failed.");
-  console.log("If /health works but /sse fails with 401, add MCP_API_KEY on Railway and redeploy.");
+  console.log("Typical fixes:");
+  console.log("  • /sse 404 or missing sseEndpoint → Railway → AgentWire → Deployments → Redeploy latest main");
+  console.log("  • /sse 401 → Railway Variables: MCP_API_KEY = value printed by npm run setup:cursor-mcp");
+  console.log("  • /ready 503 → check CDP_API_KEY, CDP_PRIVATE_KEY, CDP_WALLET_SECRET in Railway Variables");
   process.exit(1);
 }
 

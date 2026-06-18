@@ -506,6 +506,7 @@ async function runDsaCommand(command) {
       "Instadapp DSA commands (requires DSA_PRIVATE_KEY or MNEMONIC_PHRASE):",
       "  dsa accounts",
       "  dsa build",
+      "  dsa build-chains",
       "  dsa recipes",
       "  dsa encode <json-spells>",
       '  dsa cast <json-spells> [--build]',
@@ -544,7 +545,24 @@ async function runDsaCommand(command) {
   if (subcommand === "build") {
     const txHash = await instadapp.buildDsaAccount(dsa, web3);
     const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
+    const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
+    if (instance) {
+      instadapp.saveDsaChainState(
+        chainId,
+        {
+          dsaId: instance.id,
+          dsaAddress: instance.address,
+          lastBuildTx: txHash,
+        },
+        signerAddress,
+      );
+    }
     return JSON.stringify({ txHash, accounts }, null, 2);
+  }
+
+  if (subcommand === "build-chains") {
+    const result = await instadapp.buildDsaAccountsForChains();
+    return JSON.stringify(result, null, 2);
   }
 
   if (subcommand === "encode" || subcommand === "cast") {
