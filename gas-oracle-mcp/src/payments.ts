@@ -28,7 +28,7 @@ import {
 } from "@x402/extensions/bazaar";
 
 import { CONFIG, DEFAULT_PERMISSIONLESS_FACILITATOR } from "./config.js";
-import { resolveCdpApiCredentials } from "./wallet.js";
+import { diagnoseCdpApiCredentials, resolveCdpApiCredentials } from "./wallet.js";
 
 const SERVICE_CARD_OUTPUT_SCHEMA = {
   properties: {
@@ -100,10 +100,27 @@ export function createCdpFacilitatorConfig(): FacilitatorConfig {
   }
 
   if (CONFIG.usesCdpFacilitator) {
-    console.warn(
-      "[x402] CDP facilitator auth unavailable until CDP_API_KEY (or CDP_API_KEY_ID) and " +
-        "CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET) are configured.",
-    );
+    const diagnostics = diagnoseCdpApiCredentials();
+    if (diagnostics.issue === "missing_api_key_id") {
+      console.warn(
+        "[x402] CDP facilitator auth unavailable: set CDP_API_KEY or CDP_API_KEY_ID.",
+      );
+    } else if (diagnostics.issue === "missing_private_key") {
+      console.warn(
+        "[x402] CDP facilitator auth unavailable: set CDP_PRIVATE_KEY or CDP_API_KEY_SECRET.",
+      );
+    } else if (diagnostics.issue === "invalid_private_key") {
+      console.warn(
+        "[x402] CDP facilitator auth unavailable: CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET) is present " +
+          "but not a valid PEM / PKCS8 private key. Re-paste as a single line with \\n escapes " +
+          "(Railway often corrupts multi-line secrets with stray whitespace).",
+      );
+    } else {
+      console.warn(
+        "[x402] CDP facilitator auth unavailable until CDP_API_KEY (or CDP_API_KEY_ID) and " +
+          "CDP_PRIVATE_KEY (or CDP_API_KEY_SECRET) are configured.",
+      );
+    }
   }
 
   return defaultCdpFacilitator;
