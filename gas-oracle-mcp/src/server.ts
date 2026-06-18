@@ -7,10 +7,11 @@
  *
  * Revenue lands in the CDP AgentKit wallet initialized at boot.
  */
+import crypto from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createPaymentWrapper } from "@x402/mcp";
+import { createPaymentWrapper, MCP_PAYMENT_RESPONSE_META_KEY } from "@x402/mcp";
 import type {
   HTTPAdapter,
   HTTPRequestContext,
@@ -25,8 +26,8 @@ import { z } from "zod";
 
 import { CONFIG } from "./config.js";
 import { fetchUrl } from "./fetch.js";
-import { createInbox, drainInbox, peekInbox } from "./inbox.js";
-import { appendEvent, inboxExists } from "./store.js";
+import { createInbox, peekInbox } from "./inbox.js";
+import { appendEvent, inboxExists, removeInboxEventsByIds } from "./store.js";
 import {
   buildAccepts,
   buildDiscoveryExtension,
@@ -72,8 +73,15 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       drained: 2,
       events: [{ id: "ev1", receivedAt: "2026-06-12T00:00:00.000Z", body: { type: "payment" } }],
     },
-    handler: async (args) =>
-      drainInbox({ inboxId: String(args.inboxId), secret: String(args.secret) }),
+    handler: async (args) => {
+      const peeked = peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) });
+      return {
+        timestamp: peeked.timestamp,
+        inboxId: peeked.inboxId,
+        drained: peeked.pending,
+        events: peeked.events,
+      };
+    },
   },
   {
     name: "peek_inbox",
@@ -343,11 +351,33 @@ async function handleDiscoveryRequest(
   res.json(body);
 }
 
+interface PendingDrainAck {
+  inboxId: string;
+  secret: string;
+  eventIds: string[];
+}
+
+function paymentKeyFromPayload(payload: unknown): string {
+  return JSON.stringify(payload);
+}
+
+function paymentKeyFromMeta(meta: Record<string, unknown> | undefined): string | undefined {
+  const payment = meta?.["x402/payment"];
+  if (!payment || typeof payment !== "object") {
+    return undefined;
+  }
+
+  return paymentKeyFromPayload(payment);
+}
+
 function buildMcpServer(state: RuntimeState): McpServer {
   const mcpServer = new McpServer({
     name: CONFIG.serviceName,
     version: CONFIG.serviceVersion,
   });
+
+  /** Peeks held until x402 settlement succeeds for a matching payment payload. */
+  const pendingDrainAcks = new Map<string, PendingDrainAck>();
 
   if (isReady(state)) {
     for (const { definition, accepts, extensions } of state.tools) {
@@ -365,25 +395,68 @@ function buildMcpServer(state: RuntimeState): McpServer {
           onBeforeExecution: async () => {
             console.log(`[x402] Payment verified for ${definition.name}, executing...`);
           },
-          onAfterSettlement: async ({ settlement }) => {
+          onAfterSettlement: async ({ paymentPayload, settlement }) => {
+            const paymentKey = paymentKeyFromPayload(paymentPayload);
+            const pending = pendingDrainAcks.get(paymentKey);
+            if (pending) {
+              if (settlement.success) {
+                removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+              }
+              pendingDrainAcks.delete(paymentKey);
+            }
+
             console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
           },
         },
       });
 
-      mcpServer.tool(
-        definition.name,
-        definition.description,
-        definition.zodShape,
-        paid(async (args) => ({
+      const paidHandler = paid(async (args, context) => {
+        const toolResult = await definition.handler(args);
+        if (definition.name === "drain_inbox") {
+          const paymentKey = paymentKeyFromMeta(context?.meta);
+          const events = (toolResult as { events?: { id: string }[] }).events ?? [];
+          if (paymentKey) {
+            pendingDrainAcks.set(paymentKey, {
+              inboxId: String(args.inboxId),
+              secret: String(args.secret),
+              eventIds: events.map((event) => event.id),
+            });
+          }
+        }
+
+        return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(await definition.handler(args), null, 2),
+              text: JSON.stringify(toolResult, null, 2),
             },
           ],
-        })),
-      );
+        };
+      });
+
+      mcpServer.tool(definition.name, definition.description, definition.zodShape, async (args, extra) => {
+        const result = await paidHandler(args, extra);
+        const settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
+          | { success?: boolean; errorReason?: string }
+          | undefined;
+
+        if (settlement?.success === false) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: settlement.errorReason || "Payment settlement failed",
+                  settlement,
+                }),
+              },
+            ],
+          };
+        }
+
+        return result;
+      });
     }
   }
 
@@ -424,6 +497,16 @@ function buildMcpServer(state: RuntimeState): McpServer {
 /** Active SSE sessions keyed by sessionId (Cursor IDE and other HTTP+SSE clients). */
 const sseTransports = new Map<string, SSEServerTransport>();
 
+function safeCompareSecret(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) {
+    crypto.timingSafeEqual(a, a);
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
+}
+
 function isAuthorizedMcpRequest(req: Request): boolean {
   if (!CONFIG.mcpApiKey) return true;
 
@@ -431,7 +514,9 @@ function isAuthorizedMcpRequest(req: Request): boolean {
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
   const apiKey = req.get("x-api-key");
 
-  return bearer === CONFIG.mcpApiKey || apiKey === CONFIG.mcpApiKey;
+  if (bearer && safeCompareSecret(bearer, CONFIG.mcpApiKey)) return true;
+  if (apiKey && safeCompareSecret(apiKey, CONFIG.mcpApiKey)) return true;
+  return false;
 }
 
 function requireMcpApiKey(req: Request, res: Response, next: NextFunction): void {
@@ -490,7 +575,7 @@ async function main(): Promise<void> {
     }
   });
 
-  app.post("/mcp", async (req, res) => {
+  app.post("/mcp", requireMcpApiKey, async (req, res) => {
     if (!isMcpOperational(state)) {
       res.status(503).json({
         jsonrpc: "2.0",
@@ -627,7 +712,7 @@ async function main(): Promise<void> {
     console.log(`[boot] SSE endpoint:     ${CONFIG.publicUrl}/sse`);
     console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
     if (CONFIG.mcpApiKey) {
-      console.log("[boot] MCP API key auth enabled for /sse and /messages");
+      console.log("[boot] MCP API key auth enabled for /mcp, /sse, and /messages");
     }
     void initializeRuntime(state).then(() => {
       if (isMcpOperational(state)) {

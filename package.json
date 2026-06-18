@@ -14,7 +14,7 @@
     "dsa:recipes": "node scripts/dsa-cast.js recipes",
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js"
   },
   "repository": {
     "type": "git",
@@ -42,6 +42,24 @@
     "@privy-io/server-auth": "^1.32.5",
     "langsmith": "^0.7.6",
     "viem": "^2.52.2",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "bigint-buffer": "npm:four-flap-bigint-buffer@^1.1.6",
+    "bn.js": "^5.2.3",
+    "elliptic": "^6.6.1",
+    "form-data": "^4.0.6",
+    "qs": "^6.14.1",
+    "request": "npm:@cypress/request@^4.0.1",
+    "servify": {
+      "request": "npm:@cypress/request@^4.0.1"
+    },
+    "tar": "^7.4.3",
+    "tough-cookie": "^4.1.4",
+    "uuid": "^11.1.1",
+    "request": {
+      "form-data": "^4.0.6",
+      "qs": "^6.14.1",
+      "tough-cookie": "^4.1.4",
+      "uuid": "^11.1.1"
+    }
   }
 }

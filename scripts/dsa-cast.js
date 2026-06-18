@@ -158,7 +158,7 @@ async function main() {
 
     await ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild: flags.build === true,
-      dsaId: state.dsaId,
+      chainId,
     });
 
     const result = await castSpells(dsa, web3, spellsInput, { dryRun: true });
@@ -184,7 +184,7 @@ async function main() {
 
     const ensured = await ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild: flags.build === true,
-      dsaId: state.dsaId,
+      chainId,
     });
 
     const result = await castSpells(dsa, web3, spellsInput, {

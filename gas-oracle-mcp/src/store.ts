@@ -14,6 +14,23 @@ const DATA_DIR = path.join(__dirname, "..", "data", "inboxes");
 
 const MAX_EVENTS_PER_INBOX = 200;
 const EVENT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INBOX_ID_PATTERN = /^[a-f0-9]{24}$/;
+
+function assertValidInboxId(inboxId: string): void {
+  if (!INBOX_ID_PATTERN.test(inboxId)) {
+    throw new Error(`Invalid inbox ID "${inboxId}"`);
+  }
+}
+
+function secretsMatch(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  if (a.length !== b.length) {
+    crypto.timingSafeEqual(a, a);
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
+}
 
 export interface InboxEvent {
   id: string;
@@ -32,7 +49,12 @@ interface InboxRecord {
 }
 
 function inboxPath(inboxId: string): string {
-  return path.join(DATA_DIR, `${inboxId}.json`);
+  assertValidInboxId(inboxId);
+  const resolved = path.resolve(DATA_DIR, `${inboxId}.json`);
+  if (!resolved.startsWith(`${DATA_DIR}${path.sep}`)) {
+    throw new Error(`Invalid inbox ID "${inboxId}"`);
+  }
+  return resolved;
 }
 
 function ensureDataDir(): void {
@@ -76,6 +98,7 @@ export function appendEvent(
   inboxId: string,
   event: Omit<InboxEvent, "id" | "receivedAt">,
 ): InboxEvent {
+  assertValidInboxId(inboxId);
   const record = readInbox(inboxId);
   if (!record) {
     throw new Error(`Unknown inbox "${inboxId}"`);
@@ -96,11 +119,12 @@ export function drainInbox(
   inboxId: string,
   secret: string,
 ): { drained: number; events: InboxEvent[] } {
+  assertValidInboxId(inboxId);
   const record = readInbox(inboxId);
   if (!record) {
     throw new Error(`Unknown inbox "${inboxId}"`);
   }
-  if (record.secret !== secret) {
+  if (!secretsMatch(record.secret, secret)) {
     throw new Error("Invalid inbox secret");
   }
 
@@ -110,15 +134,46 @@ export function drainInbox(
   return { drained: events.length, events };
 }
 
-export function peekInbox(
+/**
+ * Removes specific inbox events after a paid drain settles successfully.
+ * Keeps any events that arrived after the peek snapshot.
+ */
+export function removeInboxEventsByIds(
   inboxId: string,
   secret: string,
-): { pending: number; events: InboxEvent[] } {
+  eventIds: string[],
+): { removed: number } {
+  assertValidInboxId(inboxId);
   const record = readInbox(inboxId);
   if (!record) {
     throw new Error(`Unknown inbox "${inboxId}"`);
   }
-  if (record.secret !== secret) {
+  if (!secretsMatch(record.secret, secret)) {
+    throw new Error("Invalid inbox secret");
+  }
+
+  if (eventIds.length === 0) {
+    return { removed: 0 };
+  }
+
+  const remove = new Set(eventIds);
+  const before = record.events.length;
+  record.events = pruneEvents(record.events.filter((event) => !remove.has(event.id)));
+  const removed = before - record.events.length;
+  writeInbox(record);
+  return { removed };
+}
+
+export function peekInbox(
+  inboxId: string,
+  secret: string,
+): { pending: number; events: InboxEvent[] } {
+  assertValidInboxId(inboxId);
+  const record = readInbox(inboxId);
+  if (!record) {
+    throw new Error(`Unknown inbox "${inboxId}"`);
+  }
+  if (!secretsMatch(record.secret, secret)) {
     throw new Error("Invalid inbox secret");
   }
 
@@ -132,5 +187,8 @@ export function peekInbox(
 }
 
 export function inboxExists(inboxId: string): boolean {
+  if (!INBOX_ID_PATTERN.test(inboxId)) {
+    return false;
+  }
   return readInbox(inboxId) !== null;
 }
