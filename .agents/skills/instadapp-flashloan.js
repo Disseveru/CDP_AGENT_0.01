@@ -12,44 +12,11 @@ const Web3 = require("web3");
 
 const instadapp = require("../../lib/instadapp");
 const { buildSpellInstance } = require("../../lib/instadapp/spells");
+const baseChain = require("../../lib/base/blockchain-data");
 
-const BASE_MAINNET_CHAIN_ID = 8453;
+const BASE_MAINNET_CHAIN_ID = baseChain.BASE_MAINNET.chainId;
 const DEFAULT_SWAP_CONNECTOR = "UNISWAP-V3-SWAP-A";
 const FLASH_PAYBACK_FEE_BPS = 9;
-
-const ERC20_DECIMALS_ABI = [
-  {
-    constant: true,
-    inputs: [],
-    name: "decimals",
-    outputs: [{ name: "", type: "uint8" }],
-    type: "function",
-  },
-];
-
-const UNISWAP_V3_POOL_ABI = [
-  {
-    inputs: [],
-    name: "token0",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "token1",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "fee",
-    outputs: [{ internalType: "uint24", name: "", type: "uint24" }],
-    stateMutability: "view",
-    type: "function",
-  },
-];
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 const HUMAN_AMOUNT_REGEX = /^\d+(\.\d+)?$/;
@@ -85,23 +52,19 @@ function resolveAuthorityAddress(walletProvider) {
  * @param {import("@coinbase/agentkit").EvmWalletProvider} walletProvider
  * @param {number} chainId
  */
-function createWeb3FromWalletProvider(walletProvider, chainId) {
-  if (typeof walletProvider.getProvider === "function") {
-    return new Web3(walletProvider.getProvider());
-  }
+function createWeb3FromWalletProvider(walletProvider) {
+  return baseChain.createBaseWeb3(walletProvider);
+}
 
+/**
+ * @param {import("@coinbase/agentkit").EvmWalletProvider} walletProvider
+ */
+function resolvePublicClient(walletProvider) {
   if (typeof walletProvider.getPublicClient === "function") {
-    const client = walletProvider.getPublicClient();
-    const rpcUrl =
-      client?.transport?.url ||
-      process.env.DSA_RPC_URL ||
-      process.env.RPC_URL ||
-      instadapp.resolveRpcUrl(chainId);
-
-    return new Web3(new Web3.providers.HttpProvider(rpcUrl));
+    return walletProvider.getPublicClient();
   }
 
-  return new Web3(new Web3.providers.HttpProvider(instadapp.resolveRpcUrl(chainId)));
+  return undefined;
 }
 
 /**
@@ -111,75 +74,12 @@ function normalizeAddress(message) {
   return message.toLowerCase();
 }
 
-/**
- * @param {import("web3").Web3} web3
- * @param {string} tokenAddress
- */
-async function readTokenDecimals(web3, tokenAddress) {
-  const contract = new web3.eth.Contract(ERC20_DECIMALS_ABI, tokenAddress);
-  const decimals = await contract.methods.decimals().call();
-  return Number(decimals);
-}
-
-/**
- * @param {string} humanAmount
- * @param {number} decimals
- */
-function toTokenWei(humanAmount, decimals) {
-  const [wholePart, fractionalPart = ""] = humanAmount.split(".");
-  if (!/^\d+$/.test(wholePart) || !/^\d*$/.test(fractionalPart)) {
-    throw new Error(`Invalid token amount "${humanAmount}".`);
-  }
-
-  const paddedFraction = `${fractionalPart}${"0".repeat(decimals)}`.slice(0, decimals);
-  const combined = `${wholePart}${paddedFraction}`.replace(/^0+(?=\d)/, "");
-  return combined === "" ? "0" : combined;
-}
-
-/**
- * @param {import("web3").Web3} web3
- * @param {string} poolAddress
- */
-async function readUniswapV3Pool(web3, poolAddress) {
-  const pool = new web3.eth.Contract(UNISWAP_V3_POOL_ABI, poolAddress);
-  const [token0, token1, fee] = await Promise.all([
-    pool.methods.token0().call(),
-    pool.methods.token1().call(),
-    pool.methods.fee().call(),
-  ]);
-
-  return {
-    token0: Web3.utils.toChecksumAddress(token0),
-    token1: Web3.utils.toChecksumAddress(token1),
-    fee: Number(fee),
-  };
-}
-
-/**
- * Instadapp unitAmt formula with slippage already reflected in minReceiveAmount.
- *
- * @param {string} minReceiveWei
- * @param {string} sellAmountWei
- * @param {number} buyDecimals
- * @param {number} sellDecimals
- */
-function calculateUnitAmt(minReceiveWei, sellAmountWei, buyDecimals, sellDecimals) {
-  const minReceive = BigInt(minReceiveWei);
-  const sellAmount = BigInt(sellAmountWei);
-
-  if (sellAmount === 0n) {
-    throw new Error("borrowAmount resolves to zero wei; cannot compute unitAmt.");
-  }
-
-  if (minReceive === 0n) {
-    throw new Error("minReceiveAmount resolves to zero wei; refusing to swap without protection.");
-  }
-
-  const scale = 10n ** 18n;
-  const numerator = minReceive * 10n ** BigInt(sellDecimals) * scale;
-  const denominator = sellAmount * 10n ** BigInt(buyDecimals);
-  return (numerator / denominator).toString();
-}
+const {
+  calculateUnitAmt,
+  readTokenDecimalsWithClient,
+  readUniswapV3Pool,
+  toTokenWei,
+} = baseChain;
 
 /**
  * @param {string} borrowAmountWei
@@ -295,7 +195,8 @@ async function executeFlashloanSpellConductor(walletProvider, args) {
   const targetDexAddress = Web3.utils.toChecksumAddress(args.targetDexAddress);
   const agentAddress = Web3.utils.toChecksumAddress(resolveAuthorityAddress(walletProvider));
 
-  const web3 = createWeb3FromWalletProvider(walletProvider, chainId);
+  const publicClient = resolvePublicClient(walletProvider);
+  const web3 = createWeb3FromWalletProvider(walletProvider);
   const privateKey = instadapp.resolveSigningKey();
   const signerAddress = web3.eth.accounts.privateKeyToAccount(privateKey).address;
 
@@ -345,7 +246,15 @@ async function executeFlashloanSpellConductor(walletProvider, args) {
     });
   }
 
-  const pool = await readUniswapV3Pool(web3, targetDexAddress);
+  const pool = await readUniswapV3Pool(web3, targetDexAddress, publicClient);
+  if (pool.liquidity === "0") {
+    return [
+      `Uniswap V3 pool ${targetDexAddress} reports zero liquidity on Base mainnet.`,
+      "Choose a pool with active liquidity or verify the pool address via Base block explorer.",
+      baseChain.BASE_MAINNET.blockExplorer,
+    ].join(" ");
+  }
+
   const borrowTokenNormalized = normalizeAddress(borrowToken);
 
   let buyToken;
@@ -361,8 +270,8 @@ async function executeFlashloanSpellConductor(walletProvider, args) {
   }
 
   const [borrowDecimals, buyDecimals] = await Promise.all([
-    readTokenDecimals(web3, borrowToken),
-    readTokenDecimals(web3, buyToken),
+    readTokenDecimalsWithClient(web3, borrowToken, publicClient),
+    readTokenDecimalsWithClient(web3, buyToken, publicClient),
   ]);
 
   const borrowAmountWei = toTokenWei(args.borrowAmount, borrowDecimals);
@@ -431,6 +340,11 @@ async function executeFlashloanSpellConductor(walletProvider, args) {
         targetRoute: args.targetRoute,
         estimatedGas: String(estimatedGas),
         logicalSpells: spellBundle.logicalSpells,
+        dataSources: {
+          baseDocsIndex: baseChain.BASE_MAINNET.docsIndex,
+          rpcUrl: baseChain.resolveBaseMainnetRpcUrl(walletProvider),
+          readMethod: publicClient ? "viem eth_call via getPublicClient()" : "web3 eth_call",
+        },
       },
       null,
       2,
@@ -466,5 +380,6 @@ module.exports = {
   computeFlashPaybackAmount,
   createWeb3FromWalletProvider,
   resolveAuthorityAddress,
+  resolvePublicClient,
   toTokenWei,
 };
