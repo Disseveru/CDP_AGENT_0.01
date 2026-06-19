@@ -16,7 +16,7 @@
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js .agents/skills/instadapp-flashloan.test.js"
   },
   "repository": {
     "type": "git",
@@ -38,7 +38,8 @@
     "@langchain/core": "^1.1.48",
     "dotenv": "^17.4.2",
     "dsa-connect": "^0.7.52",
-    "web3": "^1.10.4"
+    "web3": "^1.10.4",
+    "zod": "^3.25.76"
   },
   "overrides": {
     "@privy-io/server-auth": "^1.32.5",

@@ -19,6 +19,7 @@ const { CdpClient } = require("@coinbase/cdp-sdk");
 const { generateJwt } = require("@coinbase/cdp-sdk/auth");
 const { getLangChainTools } = require("@coinbase/agentkit-langchain");
 const instadapp = require("./lib/instadapp");
+const { instadappFlashloanActionProvider } = require("./.agents/skills/instadapp-flashloan");
 
 dotenv.config();
 
@@ -615,7 +616,11 @@ async function initializeToolkit() {
     apiKeySecret: credentials.apiKeySecretLegacy,
   };
 
-  const actionProviders = [walletActionProvider(), erc721ActionProvider()];
+  const actionProviders = [
+    walletActionProvider(),
+    erc721ActionProvider(),
+    instadappFlashloanActionProvider(),
+  ];
 
   if (walletMode === "legacy") {
     actionProviders.push(legacyCdpWalletActionProvider(cdpConfig));
@@ -632,10 +637,10 @@ async function initializeToolkit() {
 
   const focusedToolNames =
     walletMode === "legacy"
-      ? new Set(["deploy_token", "mint", "get_wallet_details"])
+      ? new Set(["deploy_token", "mint", "get_wallet_details", "execute_flashloan_spell_conductor"])
       : walletMode === "smart"
-        ? new Set(["mint", "get_wallet_details", "native_transfer"])
-        : new Set(["mint", "get_wallet_details", "request_faucet_funds"]);
+        ? new Set(["mint", "get_wallet_details", "native_transfer", "execute_flashloan_spell_conductor"])
+        : new Set(["mint", "get_wallet_details", "request_faucet_funds", "execute_flashloan_spell_conductor"]);
 
   const allTools = await getLangChainTools(agentKit);
   const tools = allTools.filter((tool) =>
