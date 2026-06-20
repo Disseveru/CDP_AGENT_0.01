@@ -4,14 +4,14 @@
 import { CONFIG } from "./config.js";
 import * as store from "./store.js";
 
-export function createInbox(): {
+export async function createInbox(): Promise<{
   inboxId: string;
   secret: string;
   createdAt: string;
   webhookUrl: string;
   usage: string;
-} {
-  const created = store.createInbox();
+}> {
+  const created = await store.createInbox();
   return {
     ...created,
     webhookUrl: `${CONFIG.publicUrl}/hooks/${created.inboxId}`,
@@ -21,8 +21,8 @@ export function createInbox(): {
   };
 }
 
-export function drainInbox(input: { inboxId: string; secret: string }) {
-  const result = store.drainInbox(input.inboxId, input.secret);
+export async function drainInbox(input: { inboxId: string; secret: string }) {
+  const result = await store.drainInbox(input.inboxId, input.secret);
   return {
     timestamp: new Date().toISOString(),
     inboxId: input.inboxId,
@@ -31,8 +31,8 @@ export function drainInbox(input: { inboxId: string; secret: string }) {
   };
 }
 
-export function peekInbox(input: { inboxId: string; secret: string }) {
-  const result = store.peekInbox(input.inboxId, input.secret);
+export async function peekInbox(input: { inboxId: string; secret: string }) {
+  const result = await store.peekInbox(input.inboxId, input.secret);
   return {
     timestamp: new Date().toISOString(),
     inboxId: input.inboxId,
@@ -41,8 +41,8 @@ export function peekInbox(input: { inboxId: string; secret: string }) {
   };
 }
 
-export function getInboxStats(input: { inboxId: string; secret: string }) {
-  const stats = store.inboxStats(input.inboxId, input.secret);
+export async function getInboxStats(input: { inboxId: string; secret: string }) {
+  const stats = await store.inboxStats(input.inboxId, input.secret);
   return {
     timestamp: new Date().toISOString(),
     inboxId: input.inboxId,

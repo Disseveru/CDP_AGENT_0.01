@@ -9,55 +9,55 @@ import {
   removeInboxEventsByIds,
 } from "./store.js";
 
-test("removeInboxEventsByIds deletes only the acknowledged event ids", () => {
-  const { inboxId, secret } = createInbox();
+test("removeInboxEventsByIds deletes only the acknowledged event ids", async () => {
+  const { inboxId, secret } = await createInbox();
 
-  appendEvent(inboxId, {
+  await appendEvent(inboxId, {
     method: "POST",
     headers: {},
     query: {},
     body: "first",
   });
-  appendEvent(inboxId, {
+  await appendEvent(inboxId, {
     method: "POST",
     headers: {},
     query: {},
     body: "second",
   });
 
-  const peeked = peekInbox(inboxId, secret);
+  const peeked = await peekInbox(inboxId, secret);
   assert.equal(peeked.pending, 2);
 
   const firstId = peeked.events[0].id;
-  const removed = removeInboxEventsByIds(inboxId, secret, [firstId]);
+  const removed = await removeInboxEventsByIds(inboxId, secret, [firstId]);
   assert.equal(removed.removed, 1);
 
-  const remaining = peekInbox(inboxId, secret);
+  const remaining = await peekInbox(inboxId, secret);
   assert.equal(remaining.pending, 1);
   assert.equal(remaining.events[0].body, "second");
 
-  drainInbox(inboxId, secret);
+  await drainInbox(inboxId, secret);
 });
 
-test("peek before settlement preserves events when acknowledgement is skipped", () => {
-  const { inboxId, secret } = createInbox();
+test("peek before settlement preserves events when acknowledgement is skipped", async () => {
+  const { inboxId, secret } = await createInbox();
 
-  appendEvent(inboxId, {
+  await appendEvent(inboxId, {
     method: "POST",
     headers: {},
     query: {},
     body: { type: "payment" },
   });
 
-  const peeked = peekInbox(inboxId, secret);
+  const peeked = await peekInbox(inboxId, secret);
   assert.equal(peeked.pending, 1);
 
-  const retry = peekInbox(inboxId, secret);
+  const retry = await peekInbox(inboxId, secret);
   assert.deepEqual(retry.events, peeked.events);
 
-  drainInbox(inboxId, secret);
+  await drainInbox(inboxId, secret);
 });
 
-test("invalid inbox ids are rejected before touching disk", () => {
-  assert.throws(() => peekInbox("../etc/passwd", "secret"), /Invalid inbox ID/);
+test("invalid inbox ids are rejected before touching disk", async () => {
+  await assert.rejects(() => peekInbox("../etc/passwd", "secret"), /Invalid inbox ID/);
 });

@@ -29,7 +29,9 @@ import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
 import { relayPost } from "./relay.js";
-import { appendEvent, inboxExists, removeInboxEventsByIds } from "./store.js";
+import { appendEvent, inboxExists, initializeStorage, removeInboxEventsByIds, getStorageHealth } from "./store.js";
+import { allowWebhookRequest, getRedisHealth, isRedisEnabled } from "./redis.js";
+import { runMigrations } from "./migrate.js";
 import {
   buildAccepts,
   buildDiscoveryExtension,
@@ -76,7 +78,7 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       events: [{ id: "ev1", receivedAt: "2026-06-12T00:00:00.000Z", body: { type: "payment" } }],
     },
     handler: async (args) => {
-      const peeked = peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) });
+      const peeked = await peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) });
       return {
         timestamp: peeked.timestamp,
         inboxId: peeked.inboxId,
@@ -106,7 +108,7 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
     example: { inboxId: "abc123", secret: "your-secret-here" },
     outputExample: { pending: 1, events: [] },
     handler: async (args) =>
-      peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) }),
+      await peekInbox({ inboxId: String(args.inboxId), secret: String(args.secret) }),
   },
   {
     name: "fetch_url",
@@ -165,7 +167,7 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
     example: { inboxId: "abc123", secret: "your-secret-here" },
     outputExample: { pending: 3, oldestEventAt: "2026-06-12T00:00:00.000Z", newestEventAt: "2026-06-12T01:00:00.000Z" },
     handler: async (args) =>
-      getInboxStats({ inboxId: String(args.inboxId), secret: String(args.secret) }),
+      await getInboxStats({ inboxId: String(args.inboxId), secret: String(args.secret) }),
   },
   {
     name: "extract_links",
@@ -495,7 +497,7 @@ function buildMcpServer(state: RuntimeState): McpServer {
             const pending = pendingDrainAcks.get(paymentKey);
             if (pending) {
               if (settlement.success) {
-                removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+                await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
               }
               pendingDrainAcks.delete(paymentKey);
             }
@@ -561,7 +563,7 @@ function buildMcpServer(state: RuntimeState): McpServer {
     "Create a free webhook inbox. Returns inboxId, secret, and webhookUrl. POST any JSON to webhookUrl; drain_inbox pulls events into your agent.",
     {},
     async () => ({
-      content: [{ type: "text" as const, text: JSON.stringify(createInbox(), null, 2) }],
+      content: [{ type: "text" as const, text: JSON.stringify(await createInbox(), null, 2) }],
     }),
   );
 
@@ -569,22 +571,27 @@ function buildMcpServer(state: RuntimeState): McpServer {
     ? state.tools.map((t) => ({ name: t.definition.name, price: t.definition.price }))
     : TOOL_DEFINITIONS.map((t) => ({ name: t.name, price: t.price }));
 
-  mcpServer.tool("ping", "Free health check. Returns service status and pricing.", {}, async () => ({
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({
-          status: state.status === "ready" ? "ok" : state.status,
-          service: CONFIG.serviceName,
-          paymentNetwork: CONFIG.caip2Network,
-          freeTools: ["create_inbox", "ping"],
-          paidTools,
-          paymentsAvailable: state.status === "ready",
-          error: state.error,
-        }),
-      },
-    ],
-  }));
+  mcpServer.tool("ping", "Free health check. Returns service status and pricing.", {}, async () => {
+    const [storage, redis] = await Promise.all([getStorageHealth(), getRedisHealth()]);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            status: state.status === "ready" ? "ok" : state.status,
+            service: CONFIG.serviceName,
+            paymentNetwork: CONFIG.caip2Network,
+            freeTools: ["create_inbox", "ping"],
+            paidTools,
+            paymentsAvailable: state.status === "ready",
+            storage,
+            redis: isRedisEnabled() ? redis : { ok: false, detail: "disabled" },
+            error: state.error,
+          }),
+        },
+      ],
+    };
+  });
 
   return mcpServer;
 }
@@ -626,6 +633,15 @@ function requireMcpApiKey(req: Request, res: Response, next: NextFunction): void
 async function main(): Promise<void> {
   console.log(`[boot] ${CONFIG.serviceName} v${CONFIG.serviceVersion} starting...`);
 
+  if (CONFIG.databaseUrl) {
+    await runMigrations();
+  }
+  await initializeStorage();
+  if (isRedisEnabled()) {
+    const redisHealth = await getRedisHealth();
+    console.log(`[boot] Redis: ${redisHealth.ok ? "connected" : redisHealth.detail || "unavailable"}`);
+  }
+
   const app = express();
   const state: RuntimeState = { status: "starting" };
 
@@ -636,10 +652,21 @@ async function main(): Promise<void> {
   app.use(express.text({ type: ["text/*", "application/xml"], limit: "1mb" }));
 
   // Inbound webhook relay — external services POST here, agents drain via MCP.
-  app.all("/hooks/:inboxId", (req, res) => {
+  app.all("/hooks/:inboxId", async (req, res) => {
     const { inboxId } = req.params;
-    if (!inboxExists(inboxId)) {
+    if (!(await inboxExists(inboxId))) {
       res.status(404).json({ error: "Unknown inbox" });
+      return;
+    }
+
+    const rateKey = `${req.ip || "unknown"}:${inboxId}`;
+    const allowed = await allowWebhookRequest(
+      rateKey,
+      CONFIG.webhookRateLimit,
+      CONFIG.webhookRateWindowSec,
+    );
+    if (!allowed) {
+      res.status(429).json({ error: "Rate limit exceeded" });
       return;
     }
 
@@ -651,7 +678,7 @@ async function main(): Promise<void> {
             ? req.body
             : req.body;
 
-      const event = appendEvent(inboxId, {
+      const event = await appendEvent(inboxId, {
         method: req.method,
         headers: Object.fromEntries(
           Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v ?? "")]),
@@ -769,13 +796,16 @@ async function main(): Promise<void> {
     handleDiscoveryRequest(req, res, state).catch(next);
   });
 
-  app.get("/health", (_req, res) => {
+  app.get("/health", async (_req, res) => {
+    const [storage, redis] = await Promise.all([getStorageHealth(), getRedisHealth()]);
     res.json({
       status: "ok",
       service: CONFIG.serviceName,
       runtimeStatus: state.status,
       payTo: state.identity?.address,
       network: CONFIG.caip2Network,
+      storage,
+      redis: isRedisEnabled() ? redis : { ok: false, detail: "disabled" },
       error: state.error,
     });
   });
