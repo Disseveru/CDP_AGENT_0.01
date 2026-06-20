@@ -6,23 +6,23 @@ import { getInboxStats } from "./inbox.js";
 import { relayPost } from "./relay.js";
 import { appendEvent, createInbox, drainInbox } from "./store.js";
 
-test("getInboxStats returns counts without exposing event bodies", () => {
-  const { inboxId, secret } = createInbox();
+test("getInboxStats returns counts without exposing event bodies", async () => {
+  const { inboxId, secret } = await createInbox();
 
-  appendEvent(inboxId, {
+  await appendEvent(inboxId, {
     method: "POST",
     headers: {},
     query: {},
     body: { secret: "payload" },
   });
 
-  const stats = getInboxStats({ inboxId, secret });
+  const stats = await getInboxStats({ inboxId, secret });
   assert.equal(stats.pending, 1);
   assert.ok(stats.oldestEventAt);
   assert.ok(stats.newestEventAt);
   assert.equal("events" in stats, false);
 
-  drainInbox(inboxId, secret);
+  await drainInbox(inboxId, secret);
 });
 
 test("extractLinks parses anchor tags from HTML", async () => {

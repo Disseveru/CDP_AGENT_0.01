@@ -10,3 +10,4 @@ startCommand = "node dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
+preDeployCommand = "node dist/migrate.js"

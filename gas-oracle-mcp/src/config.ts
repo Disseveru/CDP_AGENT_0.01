@@ -54,6 +54,14 @@ function resolvePublicBaseUrl(): string {
   return resolvePublicUrl().replace(/\/$/, "");
 }
 
+function resolveStorageBackend(): "file" | "postgres" | undefined {
+  const raw = process.env.STORAGE_BACKEND?.trim().toLowerCase();
+  if (raw === "file" || raw === "postgres") {
+    return raw;
+  }
+  return undefined;
+}
+
 export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
@@ -66,6 +74,12 @@ export const CONFIG = {
   sseMessagesEndpoint: `${resolvePublicBaseUrl()}/messages`,
   mcpApiKey,
   payToOverride: process.env.PAY_TO_ADDRESS,
+  databaseUrl: process.env.DATABASE_URL?.trim() || undefined,
+  redisUrl: process.env.REDIS_URL?.trim() || undefined,
+  dataDir: process.env.DATA_DIR?.trim() || undefined,
+  storageBackend: resolveStorageBackend(),
+  webhookRateLimit: Number(process.env.WEBHOOK_RATE_LIMIT || 120),
+  webhookRateWindowSec: Number(process.env.WEBHOOK_RATE_WINDOW_SEC || 60),
   prices: {
     discovery: process.env.PRICE_DISCOVERY || "$0.001",
     drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",

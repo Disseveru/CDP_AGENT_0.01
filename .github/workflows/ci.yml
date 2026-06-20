@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Test root CLI
+        run: npm test
+
+      - name: Install AgentWire dependencies
+        working-directory: gas-oracle-mcp
+        run: npm install --legacy-peer-deps
+
+      - name: Build AgentWire
+        working-directory: gas-oracle-mcp
+        run: npm run build
+
+      - name: Test AgentWire
+        working-directory: gas-oracle-mcp
+        run: npm test

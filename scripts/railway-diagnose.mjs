@@ -70,6 +70,12 @@ async function main() {
   const healthRes = await fetch(`${railwayUrl}/health`);
   const health = await healthRes.json();
   console.log(`health: ${healthRes.status} status=${health.status} network=${health.network}`);
+  if (health.storage) {
+    console.log(`storage: backend=${health.storage.backend} ok=${health.storage.ok}`);
+  }
+  if (health.redis) {
+    console.log(`redis: ok=${health.redis.ok}${health.redis.detail ? ` (${health.redis.detail})` : ""}`);
+  }
 
   const readyRes = await fetch(`${railwayUrl}/ready`);
   const ready = await readyRes.json();
@@ -119,12 +125,15 @@ async function main() {
   );
 
   const vars = data.variables || {};
-  for (const key of ["NETWORK", "FACILITATOR_URL", "MCP_API_KEY", "PAY_TO_ADDRESS"]) {
+  for (const key of ["NETWORK", "FACILITATOR_URL", "MCP_API_KEY", "PAY_TO_ADDRESS", "STORAGE_BACKEND", "DATA_DIR"]) {
     if (key === "MCP_API_KEY") {
       console.log(`MCP_API_KEY: ${vars.MCP_API_KEY ? "set" : "missing"}`);
       continue;
     }
     console.log(`${key}: ${vars[key] || "(unset)"}`);
+  }
+  for (const key of ["DATABASE_URL", "REDIS_URL"]) {
+    console.log(`${key}: ${vars[key] ? "set (reference)" : "missing"}`);
   }
   for (const key of ["CDP_API_KEY", "CDP_PRIVATE_KEY", "CDP_WALLET_SECRET"]) {
     console.log(summarizeCredential(key, vars[key]));
