@@ -16,6 +16,9 @@ interface InboxRecord {
 }
 
 export class FileStorage {
+  /** Serializes read-modify-write per inbox (async fs yields between read and write). */
+  private readonly inboxChains = new Map<string, Promise<unknown>>();
+
   constructor(private readonly dataDir: string) {}
 
   async init(): Promise<void> {
@@ -47,40 +50,44 @@ export class FileStorage {
     inboxId: string,
     event: Omit<InboxEvent, "id" | "receivedAt">,
   ): Promise<InboxEvent> {
-    this.assertValidInboxId(inboxId);
-    const record = await this.readInbox(inboxId);
-    if (!record) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
+    return this.runExclusive(inboxId, async () => {
+      this.assertValidInboxId(inboxId);
+      const record = await this.readInbox(inboxId);
+      if (!record) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
 
-    const full: InboxEvent = {
-      id: crypto.randomBytes(8).toString("hex"),
-      receivedAt: new Date().toISOString(),
-      ...event,
-    };
+      const full: InboxEvent = {
+        id: crypto.randomBytes(8).toString("hex"),
+        receivedAt: new Date().toISOString(),
+        ...event,
+      };
 
-    record.events = this.pruneEvents([...record.events, full]);
-    await this.writeInbox(record);
-    return full;
+      record.events = this.pruneEvents([...record.events, full]);
+      await this.writeInbox(record);
+      return full;
+    });
   }
 
   async drainInbox(
     inboxId: string,
     secret: string,
   ): Promise<{ drained: number; events: InboxEvent[] }> {
-    this.assertValidInboxId(inboxId);
-    const record = await this.readInbox(inboxId);
-    if (!record) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
-    if (!this.secretsMatch(record.secret, secret)) {
-      throw new Error("Invalid inbox secret");
-    }
+    return this.runExclusive(inboxId, async () => {
+      this.assertValidInboxId(inboxId);
+      const record = await this.readInbox(inboxId);
+      if (!record) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
+      if (!this.secretsMatch(record.secret, secret)) {
+        throw new Error("Invalid inbox secret");
+      }
 
-    const events = [...record.events];
-    record.events = [];
-    await this.writeInbox(record);
-    return { drained: events.length, events };
+      const events = [...record.events];
+      record.events = [];
+      await this.writeInbox(record);
+      return { drained: events.length, events };
+    });
   }
 
   async removeInboxEventsByIds(
@@ -88,46 +95,50 @@ export class FileStorage {
     secret: string,
     eventIds: string[],
   ): Promise<{ removed: number }> {
-    this.assertValidInboxId(inboxId);
-    const record = await this.readInbox(inboxId);
-    if (!record) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
-    if (!this.secretsMatch(record.secret, secret)) {
-      throw new Error("Invalid inbox secret");
-    }
-    if (eventIds.length === 0) {
-      return { removed: 0 };
-    }
+    return this.runExclusive(inboxId, async () => {
+      this.assertValidInboxId(inboxId);
+      const record = await this.readInbox(inboxId);
+      if (!record) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
+      if (!this.secretsMatch(record.secret, secret)) {
+        throw new Error("Invalid inbox secret");
+      }
+      if (eventIds.length === 0) {
+        return { removed: 0 };
+      }
 
-    const remove = new Set(eventIds);
-    const before = record.events.length;
-    record.events = this.pruneEvents(record.events.filter((event) => !remove.has(event.id)));
-    const removed = before - record.events.length;
-    await this.writeInbox(record);
-    return { removed };
+      const remove = new Set(eventIds);
+      const before = record.events.length;
+      record.events = this.pruneEvents(record.events.filter((event) => !remove.has(event.id)));
+      const removed = before - record.events.length;
+      await this.writeInbox(record);
+      return { removed };
+    });
   }
 
   async peekInbox(
     inboxId: string,
     secret: string,
   ): Promise<{ pending: number; events: InboxEvent[] }> {
-    this.assertValidInboxId(inboxId);
-    const record = await this.readInbox(inboxId);
-    if (!record) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
-    if (!this.secretsMatch(record.secret, secret)) {
-      throw new Error("Invalid inbox secret");
-    }
+    return this.runExclusive(inboxId, async () => {
+      this.assertValidInboxId(inboxId);
+      const record = await this.readInbox(inboxId);
+      if (!record) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
+      if (!this.secretsMatch(record.secret, secret)) {
+        throw new Error("Invalid inbox secret");
+      }
 
-    const events = this.pruneEvents(record.events);
-    if (events.length !== record.events.length) {
-      record.events = events;
-      await this.writeInbox(record);
-    }
+      const events = this.pruneEvents(record.events);
+      if (events.length !== record.events.length) {
+        record.events = events;
+        await this.writeInbox(record);
+      }
 
-    return { pending: events.length, events };
+      return { pending: events.length, events };
+    });
   }
 
   async inboxExists(inboxId: string): Promise<boolean> {
@@ -146,27 +157,40 @@ export class FileStorage {
     oldestEventAt: string | null;
     newestEventAt: string | null;
   }> {
-    this.assertValidInboxId(inboxId);
-    const record = await this.readInbox(inboxId);
-    if (!record) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
-    if (!this.secretsMatch(record.secret, secret)) {
-      throw new Error("Invalid inbox secret");
-    }
+    return this.runExclusive(inboxId, async () => {
+      this.assertValidInboxId(inboxId);
+      const record = await this.readInbox(inboxId);
+      if (!record) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
+      if (!this.secretsMatch(record.secret, secret)) {
+        throw new Error("Invalid inbox secret");
+      }
 
-    const events = this.pruneEvents(record.events);
-    if (events.length !== record.events.length) {
-      record.events = events;
-      await this.writeInbox(record);
-    }
+      const events = this.pruneEvents(record.events);
+      if (events.length !== record.events.length) {
+        record.events = events;
+        await this.writeInbox(record);
+      }
 
-    return {
-      pending: events.length,
-      createdAt: record.createdAt,
-      oldestEventAt: events[0]?.receivedAt ?? null,
-      newestEventAt: events.at(-1)?.receivedAt ?? null,
-    };
+      return {
+        pending: events.length,
+        createdAt: record.createdAt,
+        oldestEventAt: events[0]?.receivedAt ?? null,
+        newestEventAt: events.at(-1)?.receivedAt ?? null,
+      };
+    });
+  }
+
+  private runExclusive<T>(inboxId: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.inboxChains.get(inboxId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(fn);
+    this.inboxChains.set(inboxId, next);
+    return next.finally(() => {
+      if (this.inboxChains.get(inboxId) === next) {
+        this.inboxChains.delete(inboxId);
+      }
+    });
   }
 
   private assertValidInboxId(inboxId: string): void {
