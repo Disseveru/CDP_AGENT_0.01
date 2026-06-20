@@ -113,7 +113,7 @@ async function ensureVolume(token) {
     );
     console.log(`Created volume: ${created.volumeCreate.id} (${created.volumeCreate.name})`);
   } catch (error) {
-    if (/already|exists|duplicate/i.test(error.message)) {
+    if (/already|exists|duplicate|only have one volume/i.test(error.message)) {
       console.log("Volume already attached (or create skipped).");
       return;
     }
