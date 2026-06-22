@@ -6,7 +6,7 @@
  *   npm run skills:sync:agentic-market
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,12 +43,22 @@ function extractBody(markdown) {
 }
 
 async function main() {
-  const res = await fetch(SOURCE_URL);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch Agentic Market skill: ${res.status} ${res.statusText}`);
+  let remote;
+  try {
+    const res = await fetch(SOURCE_URL);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch Agentic Market skill: ${res.status} ${res.statusText}`);
+    }
+    remote = await res.text();
+  } catch (error) {
+    if (existsSync(skillPath)) {
+      console.warn(
+        `Agentic Market skill sync skipped (${error.message || error}). Using committed ${skillPath}.`,
+      );
+      return;
+    }
+    throw error;
   }
-
-  const remote = await res.text();
   const body = extractBody(remote);
   const next = `${FRONTMATTER}${body.endsWith("\n") ? body : `${body}\n`}`;
 

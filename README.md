@@ -134,9 +134,38 @@ If wallet init fails with `401`/`Unauthorized`, double-check your CDP credential
 
 ---
 
+## Instadapp DSA + Avocado flash-loan searcher
+
+Spell casting via `dsa-connect` on Base, Arbitrum, Polygon, and Optimism mainnets. Execution defaults to the **Avocado wallet SDK** gas tank (`DSA_USE_AVOCADO=1`); set `DSA_USE_AVOCADO=0` to fund DSA gas via CDP Smart Wallet + Paymaster instead.
+
+```bash
+# Signer: DSA_PRIVATE_KEY, PRIVATE_KEY, or MNEMONIC_PHRASE
+npm run dsa:accounts          # list DSA accounts for the Avocado authority
+npm run dsa -- build            # build a DSA on the Avocado safe
+npm run dsa:scan                # scan L2 pools for arbitrage opportunities
+npm run dsa:search              # flash-loan searcher (scan, gas, encode/cast-opportunity)
+```
+
+In the REPL: `dsa accounts`, `dsa scan`, `dsa gas`, `dsa cast '<json>' --build`.
+
+State persists to `dsa_data.json` (gitignored). See `AGENTS.md` for env vars (`DSA_CHAIN_ID`, `AVOCADO_SAFE_ADDRESS`, `DSA_RPC_URL`).
+
+---
+
 ## AgentWire (`gas-oracle-mcp/`) — paid MCP server
 
-Sells `drain_inbox` ($0.005), `peek_inbox` ($0.002), and `fetch_url` ($0.012) to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol. Free tools: `create_inbox`, `ping`. Webhooks arrive at `POST /hooks/{inboxId}`.
+Sells webhook inbox relay, web fetch, link extraction, and outbound HTTP relay to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol.
+
+| Tool | Price | Purpose |
+|---|---|---|
+| `create_inbox` | free | Create `{ inboxId, secret, webhookUrl }` |
+| `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
+| `peek_inbox` | $0.002 | Read events without clearing |
+| `inbox_stats` | $0.001 | Count pending events without reading payloads |
+| `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
+| `extract_links` | $0.008 | Extract anchor links from a public page |
+| `relay_post` | $0.015 | Relay outbound POST/PUT/PATCH to a public API |
+| `ping` | free | Health check (includes storage/redis status) |
 
 ### Install and run
 

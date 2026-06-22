@@ -113,13 +113,37 @@ npm run verify:cursor-mcp
 RAILWAY_TOKEN=... npm run railway:diagnose
 ```
 
-After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp**. Expect tools: `create_inbox`, `drain_inbox`, `peek_inbox`, `fetch_url`, `ping`.
+After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp**. Expect tools: `create_inbox`, `drain_inbox`, `peek_inbox`, `inbox_stats`, `fetch_url`, `extract_links`, `relay_post`, `ping`.
 
 **Railway API access from cloud agents:** `RAILWAY_TOKEN` (injected) supports **read** operations via GraphQL (logs, variables, deployments). Secret variable **writes** are blocked from this environment (403); update `CDP_*` or `MCP_API_KEY` in the Railway dashboard if credentials are corrupted.
 
 **Known boot-log issue (2026-06-18):** Railway `CDP_API_KEY` / `CDP_PRIVATE_KEY` contain stray whitespace and fail CDP facilitator auth (401). AgentWire falls back to `https://facilitator.xpay.sh` and stays `ready`, but CDP Bazaar auto-listing needs valid CDP keys. Fix: re-paste the three CDP vars in Railway Variables (single-line PEM with `\\n` for the private key), then redeploy.
 
 - `lib/instadapp/`: Instadapp `dsa-connect` spell casting on supported mainnets (default **Base mainnet**, chain id `8453`). Requires a local signer via `DSA_PRIVATE_KEY`, `PRIVATE_KEY`, `MNEMONIC_PHRASE`, or a legacy `wallet_data.txt` seed. **Base Sepolia (84532) is not supported by dsa-connect.** CLI: `npm run dsa -- accounts|build|recipes|encode|cast`. REPL: `dsa accounts`, `dsa cast '<json>' --build`.
+
+#### DSA + Avocado wallet (flash-loan searcher)
+
+The DSA stack routes execution through the **Instadapp Avocado** gas tank by default (`DSA_USE_AVOCADO=1`). The EOA derived from `DSA_PRIVATE_KEY` controls an Avocado safe; DSA spells are broadcast via `safe.sendTransactions()`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DSA_USE_AVOCADO` | `1` (on) | Set to `0` to use CDP Smart Wallet + Paymaster for DSA gas instead |
+| `DSA_PRIVATE_KEY` / `PRIVATE_KEY` / `MNEMONIC_PHRASE` | — | Local signer for DSA and Avocado safe derivation |
+| `DSA_CHAIN_ID` | `8453` (Base) | Target mainnet (`42161` Arbitrum, `137` Polygon, `10` Optimism also supported) |
+| `AVOCADO_SAFE_ADDRESS` | auto-pick | Override the Avocado safe; otherwise picks the highest USDC gas balance |
+| `DSA_RPC_URL` | network default | Override RPC for the selected chain |
+
+Commands:
+
+| Task | Command |
+|---|---|
+| List DSA accounts | `npm run dsa:accounts` |
+| Build DSA on Avocado safe | `npm run dsa -- build` |
+| Scan L2 arbitrage opportunities | `npm run dsa:scan` |
+| Flash-loan searcher CLI | `npm run dsa:search` (scan, gas, encode/cast-opportunity) |
+| Interactive REPL | `dsa scan`, `dsa gas`, `dsa cast '<json>' --build` |
+
+State persists to `dsa_data.json` (gitignored). The client tracks per-chain `dsaId`, `signerAddress`, and `authorityAddress` (Avocado safe) to prevent stale-id bugs after signer or safe switches.
 
 ### Runtime notes
 
