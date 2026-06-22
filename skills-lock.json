@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "agentic-market": {
+      "source": "https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869",
+      "sourceType": "url",
+      "skillPath": "skills/agentic-market/SKILL.md",
+      "computedHash": "dba88bdd9d1d060f23237961e7fca7091ef2d9365afdcd1f82db9d89165bd5f6"
+    },
     "agentic-wallet": {
       "source": "coinbase/agentic-wallet-skills",
       "sourceType": "github",
