@@ -40,8 +40,23 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 |---|---|
 | Install dependencies | `npm install` |
 | Bootstrap Agentic Market + Wallet (every agent session) | `npm run bootstrap:agent` |
+| **Run CI (Cursor — use instead of GitHub Actions)** | `npm run ci` |
 | Install agentic-wallet skill (Cursor) | `npm run skills:install` |
 | Start interactive CLI REPL | `npm start` or `node index.js` |
+
+### CI in Cursor (not GitHub Actions)
+
+**Primary CI for this repo runs in Cursor**, not GitHub Actions. Cloud Agents and local Cursor sessions should run:
+
+```bash
+npm run ci
+```
+
+before every commit, push, or PR update. The script (`scripts/ci.mjs`) installs deps, builds AgentWire, and runs all unit tests — the same steps the old GitHub workflow used.
+
+GitHub Actions is **manual-only** (`workflow_dispatch`) because account billing may block automatic PR runs. To trigger it anyway: GitHub → Actions → **CI (manual)** → Run workflow.
+
+Cloud Agents already run in a full Linux VM with network access, so `npm run ci` is the intended verification path.
 
 ### Agentic Market + Agentic Wallet skills
 
