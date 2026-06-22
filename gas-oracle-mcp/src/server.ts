@@ -654,19 +654,22 @@ async function main(): Promise<void> {
   // Inbound webhook relay — external services POST here, agents drain via MCP.
   app.all("/hooks/:inboxId", async (req, res) => {
     const { inboxId } = req.params;
-    if (!(await inboxExists(inboxId))) {
-      res.status(404).json({ error: "Unknown inbox" });
-      return;
-    }
+    const clientIp = req.ip || "unknown";
 
-    const rateKey = `${req.ip || "unknown"}:${inboxId}`;
+    // Rate-limit by client IP before storage lookups. A per-inbox key would assign
+    // each random inboxId its own bucket and allow unbounded 404 probes against Postgres.
     const allowed = await allowWebhookRequest(
-      rateKey,
+      clientIp,
       CONFIG.webhookRateLimit,
       CONFIG.webhookRateWindowSec,
     );
     if (!allowed) {
       res.status(429).json({ error: "Rate limit exceeded" });
+      return;
+    }
+
+    if (!(await inboxExists(inboxId))) {
+      res.status(404).json({ error: "Unknown inbox" });
       return;
     }
 
