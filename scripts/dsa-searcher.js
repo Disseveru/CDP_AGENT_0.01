@@ -34,6 +34,7 @@ Environment:
   DSA_PRIVATE_KEY              EOA private key (Avocado owner + DSA signer)
   DSA_CHAIN_ID                 Default chain (8453 Base)
   DSA_USE_AVOCADO              Default 1 — broadcast via Avocado USDC gas tank
+  AVOCADO_SAFE_ADDRESS         Optional override; otherwise picks the funded safe
   DSA_USE_PAYMASTER            Set 0 to disable legacy CDP paymaster fallback`);
 }
 
