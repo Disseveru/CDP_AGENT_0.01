@@ -32,6 +32,7 @@ async function main(): Promise<void> {
     "peek_inbox",
     "ping",
     "relay_post",
+    "request_human_captcha_bypass",
   ];
   if (names.join(",") !== expected.join(",")) {
     throw new Error(`Expected tools [${expected.join(", ")}], got [${names.join(", ")}]`);

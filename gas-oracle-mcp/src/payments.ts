@@ -88,6 +88,7 @@ export const SERVICE_CARD_OUTPUT_EXAMPLE = {
     { name: "fetch_url", price: CONFIG.prices.fetchUrl },
     { name: "extract_links", price: CONFIG.prices.extractLinks },
     { name: "relay_post", price: CONFIG.prices.relayPost },
+    { name: "request_human_captcha_bypass", price: CONFIG.prices.captchaBypass },
     { name: "ping", price: "free" },
   ],
 } as const;
@@ -243,12 +244,64 @@ export function buildDiscoveryRouteConfig(payTo: string): RouteConfig {
   return routes["GET /"];
 }
 
+export function buildCaptchaSubmitRouteConfig(payTo: string): RouteConfig {
+  const resource = `${CONFIG.publicUrl}/api/v1/captcha/submit`;
+  return {
+    accepts: {
+      scheme: "exact",
+      network: CONFIG.caip2Network,
+      payTo,
+      price: CONFIG.prices.captchaSubmit,
+      maxTimeoutSeconds: 120,
+    },
+    resource,
+    description:
+      "Submit a CAPTCHA for human-in-the-loop solving. Returns task_id and operator solve URL.",
+    mimeType: "application/json",
+    serviceName: CONFIG.serviceName,
+    tags: ["captcha", "human-in-the-loop", "agent-infrastructure"],
+    unpaidResponseBody: () => ({
+      contentType: "application/json",
+      body: {
+        error: "payment_required",
+        message: "USDC micro-payment required on Base. Retry with X-PAYMENT / PAYMENT-SIGNATURE header.",
+        price: CONFIG.prices.captchaSubmit,
+        network: CONFIG.caip2Network,
+      },
+    }),
+    extensions: declareDiscoveryExtension({
+      inputSchema: {
+        type: "object",
+        properties: {
+          sitekey: { type: "string" },
+          pageurl: { type: "string", format: "uri" },
+          captcha_type: { type: "string", enum: ["recaptcha", "hcaptcha", "turnstile"] },
+        },
+        required: ["sitekey", "pageurl", "captcha_type"],
+      },
+      example: {
+        sitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
+        pageurl: "https://example.com/login",
+        captcha_type: "recaptcha",
+      },
+      output: {
+        example: {
+          task_id: "550e8400-e29b-41d4-a716-446655440000",
+          status: "pending",
+          solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
+        },
+      },
+    }),
+  };
+}
+
 export async function createDiscoveryHttpServer(
   resourceServer: x402ResourceServer,
   payTo: string,
 ): Promise<x402HTTPResourceServer> {
   const httpServer = new x402HTTPResourceServer(resourceServer, {
     "GET /": buildDiscoveryRouteConfig(payTo),
+    "POST /api/v1/captcha/submit": buildCaptchaSubmitRouteConfig(payTo),
   });
 
   await httpServer.initialize();
