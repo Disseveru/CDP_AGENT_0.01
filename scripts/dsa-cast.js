@@ -12,11 +12,13 @@ const {
   createDsaClient,
   ensureDsaInstance,
   formatChainLabel,
+  getDsaGasStatus,
   listDsaAccounts,
   listRecipes,
   loadDsaChainState,
   loadDsaState,
   parseSpellsInput,
+  resolveDsaAuthorityAddress,
   resolveDsaChainId,
   saveDsaChainState,
   saveDsaState,
@@ -36,6 +38,9 @@ Usage:
   node scripts/dsa-cast.js encode '<json-spells>'
   node scripts/dsa-cast.js cast '<json-spells>' [--valueWei <wei>] [--build]
   node scripts/dsa-cast.js cast-file <path> [--valueWei <wei>] [--build]
+  node scripts/dsa-cast.js scan|gas
+  npm run dsa:search -- scan
+  npm run dsa:search -- encode-opportunity '<json>'
 
 Environment:
   DSA_PRIVATE_KEY / PRIVATE_KEY / MNEMONIC_PHRASE   Signer for spell authority
@@ -106,13 +111,35 @@ async function main() {
   const { dsa, web3, chainId, signerAddress } = createDsaClient();
   const state = loadDsaState();
 
+  if (command === "accounts") {
+    const authorityAddress = await resolveDsaAuthorityAddress();
+    const accounts = await listDsaAccounts(dsa, authorityAddress);
+    console.log(
+      JSON.stringify(
+        {
+          ownerAddress: signerAddress,
+          authorityAddress,
+          chainId,
+          accounts,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   if (command === "status") {
+    const authorityAddress = await resolveDsaAuthorityAddress();
+    const gasStatus = await getDsaGasStatus(signerAddress, chainId);
     console.log(
       JSON.stringify(
         {
           chainId,
           chain: formatChainLabel(chainId),
-          signerAddress,
+          ownerAddress: signerAddress,
+          authorityAddress,
+          gas: gasStatus,
           persisted: state,
         },
         null,
@@ -122,15 +149,12 @@ async function main() {
     return;
   }
 
-  if (command === "accounts") {
-    const accounts = await listDsaAccounts(dsa, signerAddress);
-    console.log(JSON.stringify({ signerAddress, chainId, accounts }, null, 2));
-    return;
-  }
-
   if (command === "build") {
-    const txHash = await buildDsaAccount(dsa, web3);
-    const accounts = await listDsaAccounts(dsa, signerAddress);
+    const buildResult = await buildDsaAccount(dsa, web3, { chainId, signerAddress });
+    const txHash = buildResult.txHash;
+    const authorityAddress =
+      buildResult.authorityAddress || (await resolveDsaAuthorityAddress());
+    const accounts = await listDsaAccounts(dsa, authorityAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
       saveDsaChainState(
@@ -139,11 +163,12 @@ async function main() {
           dsaId: instance.id,
           dsaAddress: instance.address,
           lastBuildTx: txHash,
+          authorityAddress,
         },
         signerAddress,
       );
     }
-    console.log(JSON.stringify({ txHash, accounts }, null, 2));
+    console.log(JSON.stringify({ txHash, gasFunding: buildResult.gasFunding, accounts }, null, 2));
     return;
   }
 
@@ -176,12 +201,14 @@ async function main() {
       throw new Error("Usage: node scripts/dsa-cast.js use <dsaId>");
     }
 
+    const authorityAddress = await resolveDsaAuthorityAddress();
     const instance = await dsa.setInstance(dsaId);
     saveDsaChainState(
       chainId,
       {
         dsaId: instance.id,
         dsaAddress: instance.address,
+        authorityAddress,
       },
       signerAddress,
     );
@@ -196,12 +223,15 @@ async function main() {
       throw new Error("Usage: node scripts/dsa-cast.js encode '<json-spells>'");
     }
 
-    await ensureDsaInstance(dsa, web3, signerAddress, {
+    const ensured = await ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild: flags.build === true,
       chainId,
     });
-
-    const result = await castSpells(dsa, web3, spellsInput, { dryRun: true });
+    const result = await castSpells(dsa, web3, spellsInput, {
+      dryRun: true,
+      authorityAddress: ensured.authorityAddress,
+      chainId,
+    });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -229,6 +259,8 @@ async function main() {
 
     const result = await castSpells(dsa, web3, spellsInput, {
       valueWei: typeof flags.valueWei === "string" ? flags.valueWei : undefined,
+      authorityAddress: ensured.authorityAddress,
+      chainId,
     });
 
     console.log(

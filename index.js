@@ -378,6 +378,7 @@ function printHelp(tools) {
   console.log("  send <to> <amount>           Send native ETH (smart wallet mode)");
   console.log("  faucet                       Request Base Sepolia test funds (EOA mode)");
   console.log("  dsa accounts|build|recipes   Instadapp DSA account management");
+  console.log("  dsa scan|gas                 Flash-loan searcher scan / paymaster gas");
   console.log("  dsa encode <json>            Encode spells without broadcasting");
   console.log("  dsa cast <json> [--build]    Cast Instadapp spells on Base mainnet (8453)");
   console.log("  run <tool> [json]            Invoke any registered tool with JSON args");
@@ -508,9 +509,12 @@ async function runDsaCommand(command) {
       "  dsa build",
       "  dsa build-chains",
       "  dsa recipes",
+      "  dsa scan",
+      "  dsa gas",
       "  dsa encode <json-spells>",
       '  dsa cast <json-spells> [--build]',
       "",
+      "DSA uses DSA_PRIVATE_KEY (EOA owner). DSA authority is the Avocado safe; gas is paid from the USDC gas tank.",
       "dsa-connect targets Base mainnet (8453), not Base Sepolia.",
       "Example:",
       '  dsa cast \'[{"connector":"BASIC-A","method":"deposit","args":["0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","1000000000000000000",0,0]}]\' --build',
@@ -537,14 +541,12 @@ async function runDsaCommand(command) {
   const autoBuild = args.includes("--build");
   const jsonText = args.filter((token) => token !== "--build").join(" ").trim();
 
-  if (subcommand === "accounts") {
-    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
-    return JSON.stringify({ signerAddress, chainId, accounts }, null, 2);
-  }
-
   if (subcommand === "build") {
-    const txHash = await instadapp.buildDsaAccount(dsa, web3);
-    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
+    const buildResult = await instadapp.buildDsaAccount(dsa, web3, { chainId, signerAddress });
+    const txHash = buildResult.txHash;
+    const authorityAddress =
+      buildResult.authorityAddress || (await instadapp.resolveDsaAuthorityAddress());
+    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
       instadapp.saveDsaChainState(
@@ -553,16 +555,52 @@ async function runDsaCommand(command) {
           dsaId: instance.id,
           dsaAddress: instance.address,
           lastBuildTx: txHash,
+          authorityAddress,
         },
         signerAddress,
       );
     }
-    return JSON.stringify({ txHash, accounts }, null, 2);
+    return JSON.stringify(
+      { txHash, gasFunding: buildResult.gasFunding, authorityAddress, accounts },
+      null,
+      2,
+    );
   }
 
   if (subcommand === "build-chains") {
     const result = await instadapp.buildDsaAccountsForChains();
     return JSON.stringify(result, null, 2);
+  }
+
+  if (subcommand === "scan") {
+    const opportunities = await instadapp.scanOpportunities();
+    return JSON.stringify({ opportunities, count: opportunities.length }, null, 2);
+  }
+
+  if (subcommand === "gas") {
+    const gasStatus = await instadapp.getDsaGasStatus(signerAddress, chainId);
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
+    return JSON.stringify(
+      {
+        ownerAddress: signerAddress,
+        authorityAddress,
+        chainId,
+        chain: instadapp.formatChainLabel(chainId),
+        ...gasStatus,
+      },
+      null,
+      2,
+    );
+  }
+
+  if (subcommand === "accounts") {
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
+    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
+    return JSON.stringify(
+      { ownerAddress: signerAddress, authorityAddress, chainId, accounts },
+      null,
+      2,
+    );
   }
 
   if (subcommand === "encode" || subcommand === "cast") {
@@ -577,6 +615,8 @@ async function runDsaCommand(command) {
     });
     const result = await instadapp.castSpells(dsa, web3, jsonText, {
       dryRun: subcommand === "encode",
+      authorityAddress: ensured.authorityAddress,
+      chainId,
     });
 
     return JSON.stringify(

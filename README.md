@@ -9,11 +9,21 @@ Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (S
 
 Both projects share the same set of Coinbase CDP credentials.
 
-This repo also ships the Coinbase [**agentic-wallet**](https://github.com/coinbase/agentic-wallet-skills) Cursor skill (`.agents/skills/agentic-wallet/`). It complements the CDP AgentKit CLI by routing agents through the [`awal`](https://www.npmjs.com/package/awal) CLI for sign-in, balances, sends, trades, funding, x402 paid APIs, and onchain queries.
+This repo also ships Cursor agent skills for **Agentic Market** (`.agents/skills/agentic-market/`) and **Agentic Wallet** (`.agents/skills/agentic-wallet/`). Every agent session should run `npm run bootstrap:agent` first — it syncs the [Agentic Market skill](https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869) and checks Agentic Wallet status via [`awal`](https://www.npmjs.com/package/awal).
 
 ---
 
-## Prerequisites
+## Agent bootstrap (every Cursor agent session)
+
+```bash
+npm run bootstrap:agent
+```
+
+Then read `.agents/skills/agentic-market/SKILL.md` and follow the **CLI setup** path. See `AGENTS.md` for the full mandatory checklist.
+
+---
+
+## Agentic Wallet skill (Cursor)
 
 - Node.js `>= 20`
 - A Coinbase Developer Platform account ([portal.cdp.coinbase.com](https://portal.cdp.coinbase.com)) with an API key and Wallet Secret
@@ -124,9 +134,38 @@ If wallet init fails with `401`/`Unauthorized`, double-check your CDP credential
 
 ---
 
+## Instadapp DSA + Avocado flash-loan searcher
+
+Spell casting via `dsa-connect` on Base, Arbitrum, Polygon, and Optimism mainnets. Execution defaults to the **Avocado wallet SDK** gas tank (`DSA_USE_AVOCADO=1`); set `DSA_USE_AVOCADO=0` to fund DSA gas via CDP Smart Wallet + Paymaster instead.
+
+```bash
+# Signer: DSA_PRIVATE_KEY, PRIVATE_KEY, or MNEMONIC_PHRASE
+npm run dsa:accounts          # list DSA accounts for the Avocado authority
+npm run dsa -- build            # build a DSA on the Avocado safe
+npm run dsa:scan                # scan L2 pools for arbitrage opportunities
+npm run dsa:search              # flash-loan searcher (scan, gas, encode/cast-opportunity)
+```
+
+In the REPL: `dsa accounts`, `dsa scan`, `dsa gas`, `dsa cast '<json>' --build`.
+
+State persists to `dsa_data.json` (gitignored). See `AGENTS.md` for env vars (`DSA_CHAIN_ID`, `AVOCADO_SAFE_ADDRESS`, `DSA_RPC_URL`).
+
+---
+
 ## AgentWire (`gas-oracle-mcp/`) — paid MCP server
 
-Sells `drain_inbox` ($0.005), `peek_inbox` ($0.002), and `fetch_url` ($0.012) to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol. Free tools: `create_inbox`, `ping`. Webhooks arrive at `POST /hooks/{inboxId}`.
+Sells webhook inbox relay, web fetch, link extraction, and outbound HTTP relay to autonomous agents over MCP Streamable HTTP, with USDC micro-payments settled via the x402 protocol.
+
+| Tool | Price | Purpose |
+|---|---|---|
+| `create_inbox` | free | Create `{ inboxId, secret, webhookUrl }` |
+| `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
+| `peek_inbox` | $0.002 | Read events without clearing |
+| `inbox_stats` | $0.001 | Count pending events without reading payloads |
+| `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
+| `extract_links` | $0.008 | Extract anchor links from a public page |
+| `relay_post` | $0.015 | Relay outbound POST/PUT/PATCH to a public API |
+| `ping` | free | Health check (includes storage/redis status) |
 
 ### Install and run
 

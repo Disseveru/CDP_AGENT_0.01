@@ -17,6 +17,9 @@ let adapter: StorageAdapter | null = null;
 let initPromise: Promise<void> | null = null;
 
 function resolveBackend(): "file" | "postgres" {
+  if (CONFIG.storageBackend === "file") {
+    return "file";
+  }
   if (CONFIG.storageBackend === "postgres" || CONFIG.databaseUrl) {
     return "postgres";
   }
