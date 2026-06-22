@@ -112,8 +112,8 @@ async function main() {
   const state = loadDsaState();
 
   if (command === "accounts") {
-    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
-    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
+    const authorityAddress = await resolveDsaAuthorityAddress();
+    const accounts = await listDsaAccounts(dsa, authorityAddress);
     console.log(
       JSON.stringify(
         {
@@ -130,8 +130,8 @@ async function main() {
   }
 
   if (command === "status") {
-    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
-    const gasStatus = await instadapp.getDsaGasStatus(signerAddress, chainId);
+    const authorityAddress = await resolveDsaAuthorityAddress();
+    const gasStatus = await getDsaGasStatus(signerAddress, chainId);
     console.log(
       JSON.stringify(
         {
@@ -152,7 +152,9 @@ async function main() {
   if (command === "build") {
     const buildResult = await buildDsaAccount(dsa, web3, { chainId, signerAddress });
     const txHash = buildResult.txHash;
-    const accounts = await listDsaAccounts(dsa, signerAddress);
+    const authorityAddress =
+      buildResult.authorityAddress || (await resolveDsaAuthorityAddress());
+    const accounts = await listDsaAccounts(dsa, authorityAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
       saveDsaChainState(
@@ -161,6 +163,7 @@ async function main() {
           dsaId: instance.id,
           dsaAddress: instance.address,
           lastBuildTx: txHash,
+          authorityAddress,
         },
         signerAddress,
       );
