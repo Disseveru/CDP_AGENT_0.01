@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 
-import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask } from "./store.js";
+import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageReady } from "./store.js";
 import { notifyOperator } from "./notifications.js";
 import type {
   CaptchaSubmitInput,
@@ -28,6 +28,8 @@ export async function createCaptchaTask(
   input: CaptchaSubmitInput,
   options?: { paymentTx?: string },
 ): Promise<CaptchaSubmitResult> {
+  await assertCaptchaStorageReady();
+
   const taskId = crypto.randomUUID();
   const task: CaptchaTask = {
     task_id: taskId,

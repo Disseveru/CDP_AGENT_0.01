@@ -246,53 +246,63 @@ export function buildDiscoveryRouteConfig(payTo: string): RouteConfig {
 
 export function buildCaptchaSubmitRouteConfig(payTo: string): RouteConfig {
   const resource = `${CONFIG.publicUrl}/api/v1/captcha/submit`;
-  return {
-    accepts: {
-      scheme: "exact",
-      network: CONFIG.caip2Network,
-      payTo,
-      price: CONFIG.prices.captchaSubmit,
-      maxTimeoutSeconds: 120,
+  const extensions = declareDiscoveryExtension({
+    bodyType: "json",
+    input: {
+      sitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
+      pageurl: "https://example.com/login",
+      captcha_type: "recaptcha",
     },
-    resource,
-    description:
-      "Submit a CAPTCHA for human-in-the-loop solving. Returns task_id and operator solve URL.",
-    mimeType: "application/json",
-    serviceName: CONFIG.serviceName,
-    tags: ["captcha", "human-in-the-loop", "agent-infrastructure"],
-    unpaidResponseBody: () => ({
-      contentType: "application/json",
-      body: {
-        error: "payment_required",
-        message: "USDC micro-payment required on Base. Retry with X-PAYMENT / PAYMENT-SIGNATURE header.",
-        price: CONFIG.prices.captchaSubmit,
-        network: CONFIG.caip2Network,
+    inputSchema: {
+      type: "object",
+      properties: {
+        sitekey: { type: "string" },
+        pageurl: { type: "string" },
+        captcha_type: { type: "string", enum: ["recaptcha", "hcaptcha", "turnstile"] },
       },
-    }),
-    extensions: declareDiscoveryExtension({
-      inputSchema: {
-        type: "object",
-        properties: {
-          sitekey: { type: "string" },
-          pageurl: { type: "string", format: "uri" },
-          captcha_type: { type: "string", enum: ["recaptcha", "hcaptcha", "turnstile"] },
-        },
-        required: ["sitekey", "pageurl", "captcha_type"],
-      },
+      required: ["sitekey", "pageurl", "captcha_type"],
+      additionalProperties: false,
+    },
+    output: {
       example: {
-        sitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
-        pageurl: "https://example.com/login",
-        captcha_type: "recaptcha",
+        task_id: "550e8400-e29b-41d4-a716-446655440000",
+        status: "pending",
+        solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
       },
-      output: {
-        example: {
-          task_id: "550e8400-e29b-41d4-a716-446655440000",
-          status: "pending",
-          solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
+    },
+  });
+
+  const routes = {
+    "POST /api/v1/captcha/submit": {
+      accepts: {
+        scheme: "exact",
+        network: CONFIG.caip2Network,
+        payTo,
+        price: CONFIG.prices.captchaSubmit,
+        maxTimeoutSeconds: 120,
+      },
+      resource,
+      description:
+        "Submit a CAPTCHA for human-in-the-loop solving. Returns task_id and operator solve URL.",
+      mimeType: "application/json",
+      serviceName: CONFIG.serviceName,
+      tags: ["captcha", "human-in-the-loop", "agent-infrastructure"],
+      unpaidResponseBody: () => ({
+        contentType: "application/json",
+        body: {
+          error: "payment_required",
+          message:
+            "USDC micro-payment required on Base. Retry with X-PAYMENT / PAYMENT-SIGNATURE header.",
+          price: CONFIG.prices.captchaSubmit,
+          network: CONFIG.caip2Network,
         },
-      },
-    }),
-  };
+      }),
+      extensions,
+    },
+  } satisfies Record<string, RouteConfig>;
+
+  validateBazaarRouteExtensions(routes);
+  return routes["POST /api/v1/captcha/submit"];
 }
 
 export async function createDiscoveryHttpServer(

@@ -32,7 +32,7 @@ import {
   parseSubmitBody,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
-import { getCaptchaTask } from "./captcha/store.js";
+import { getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
@@ -283,6 +283,9 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
     },
     handler: async (args) => {
+      if (!isCaptchaStorageConfigured()) {
+        throw new Error("CAPTCHA storage unavailable: REDIS_URL must be configured on Railway");
+      }
       const created = await createCaptchaTask({
         sitekey: String(args.sitekey),
         pageurl: String(args.pageurl),
@@ -518,6 +521,14 @@ async function handleCaptchaSubmitRequest(
     return;
   }
 
+  if (!isCaptchaStorageConfigured()) {
+    res.status(503).json({
+      error: "captcha_storage_unavailable",
+      message: "CAPTCHA task storage requires REDIS_URL on Railway",
+    });
+    return;
+  }
+
   let input;
   try {
     input = parseSubmitBody(req.body);
@@ -547,7 +558,18 @@ async function handleCaptchaSubmitRequest(
     return;
   }
 
-  const created = await createCaptchaTask(input);
+  let created;
+  try {
+    created = await createCaptchaTask(input);
+  } catch (error) {
+    console.error("[captcha] Task creation failed after payment verification:", error);
+    res.status(503).json({
+      error: "captcha_task_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
   const body = created;
   const responseBody = Buffer.from(JSON.stringify(body));
   const settlement = await state.discoveryHttpServer.processSettlement(

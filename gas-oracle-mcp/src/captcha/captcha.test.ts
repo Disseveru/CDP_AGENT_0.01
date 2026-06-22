@@ -3,7 +3,9 @@ import test from "node:test";
 
 import { buildSmsBody } from "./notifications.js";
 import { renderSolvePage } from "./solve-page.js";
+import { isCaptchaStorageConfigured } from "./store.js";
 import { captchaWidgetScript, submitBodySchema } from "./tasks.js";
+import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
 
 test("submitBodySchema validates captcha submit payload", () => {
@@ -45,4 +47,17 @@ test("captchaWidgetScript maps all providers", () => {
   assert.equal(captchaWidgetScript("recaptcha").globalName, "grecaptcha");
   assert.equal(captchaWidgetScript("hcaptcha").globalName, "hcaptcha");
   assert.equal(captchaWidgetScript("turnstile").globalName, "turnstile");
+});
+
+test("buildCaptchaSubmitRouteConfig passes Bazaar route validation", () => {
+  const config = buildCaptchaSubmitRouteConfig("0x0000000000000000000000000000000000000001");
+  assert.equal(config.resource?.includes("/api/v1/captcha/submit"), true);
+  assert.ok(config.extensions?.bazaar);
+});
+
+test("isCaptchaStorageConfigured reflects REDIS_URL", () => {
+  const previous = process.env.REDIS_URL;
+  delete process.env.REDIS_URL;
+  assert.equal(isCaptchaStorageConfigured(), false);
+  if (previous) process.env.REDIS_URL = previous;
 });
