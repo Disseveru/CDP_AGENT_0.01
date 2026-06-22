@@ -99,6 +99,14 @@ This repo also includes the Coinbase [agentic-wallet](https://github.com/coinbas
 
 Provision or refresh wiring: `RAILWAY_TOKEN=... npm run railway:provision -- --redeploy`
 
+Provision CAPTCHA operator notifications (SMS + Gmail):
+
+```bash
+RAILWAY_TOKEN=... npm run railway:provision-notifications -- --redeploy
+```
+
+Operator defaults: SMS `+17472241814`, email `er2k18@gmail.com`. Set `TWILIO_*` and `SMTP_PASS` (Gmail app password) in Cursor Cloud secrets or export locally before running the script.
+
 The root CLI still defaults to **Base Sepolia** locally. Only the Railway AgentWire service runs on mainnet.
 
 ### Cursor MCP setup (for new agents)
