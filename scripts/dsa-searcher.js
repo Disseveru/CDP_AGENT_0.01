@@ -130,7 +130,7 @@ async function main() {
     const targetChainId = Number(opportunity.chainId || chainId);
     const { dsa, web3 } = createDsaClient({ chainId: targetChainId, privateKey });
 
-    await ensureDsaInstance(dsa, web3, signerAddress, {
+    const ensured = await ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild: flags.build === true,
       chainId: targetChainId,
     });
@@ -147,6 +147,7 @@ async function main() {
         dryRun: true,
         chainId: targetChainId,
         signerAddress,
+        authorityAddress: ensured.authorityAddress,
         flashLoan: true,
       });
       console.log(JSON.stringify({ opportunity: enriched, spells, ...result }, null, 2));
@@ -156,6 +157,7 @@ async function main() {
     const result = await castSpells(dsa, web3, spells, {
       chainId: targetChainId,
       signerAddress,
+      authorityAddress: ensured.authorityAddress,
       flashLoan: true,
     });
     console.log(JSON.stringify({ opportunity: enriched, spells, ...result }, null, 2));
