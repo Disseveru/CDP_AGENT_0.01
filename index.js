@@ -542,9 +542,10 @@ async function runDsaCommand(command) {
   const jsonText = args.filter((token) => token !== "--build").join(" ").trim();
 
   if (subcommand === "build") {
-    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
     const buildResult = await instadapp.buildDsaAccount(dsa, web3, { chainId, signerAddress });
     const txHash = buildResult.txHash;
+    const authorityAddress =
+      buildResult.authorityAddress || (await instadapp.resolveDsaAuthorityAddress());
     const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
@@ -554,6 +555,7 @@ async function runDsaCommand(command) {
           dsaId: instance.id,
           dsaAddress: instance.address,
           lastBuildTx: txHash,
+          authorityAddress,
         },
         signerAddress,
       );
@@ -613,6 +615,8 @@ async function runDsaCommand(command) {
     });
     const result = await instadapp.castSpells(dsa, web3, jsonText, {
       dryRun: subcommand === "encode",
+      authorityAddress: ensured.authorityAddress,
+      chainId,
     });
 
     return JSON.stringify(

@@ -201,12 +201,14 @@ async function main() {
       throw new Error("Usage: node scripts/dsa-cast.js use <dsaId>");
     }
 
+    const authorityAddress = await resolveDsaAuthorityAddress();
     const instance = await dsa.setInstance(dsaId);
     saveDsaChainState(
       chainId,
       {
         dsaId: instance.id,
         dsaAddress: instance.address,
+        authorityAddress,
       },
       signerAddress,
     );
@@ -226,7 +228,12 @@ async function main() {
       chainId,
     });
 
-    const result = await castSpells(dsa, web3, spellsInput, { dryRun: true });
+    const authorityAddress = await resolveDsaAuthorityAddress();
+    const result = await castSpells(dsa, web3, spellsInput, {
+      dryRun: true,
+      authorityAddress,
+      chainId,
+    });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
@@ -254,6 +261,8 @@ async function main() {
 
     const result = await castSpells(dsa, web3, spellsInput, {
       valueWei: typeof flags.valueWei === "string" ? flags.valueWei : undefined,
+      authorityAddress: ensured.authorityAddress,
+      chainId,
     });
 
     console.log(
