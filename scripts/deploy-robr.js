@@ -30,11 +30,20 @@ const NETWORK_ID = "base-mainnet";
 const TWEET_URL = "https://x.com/elonmusk/status/2069089477511790812";
 const TOKEN_NAME = "Ro the Robber";
 const TOKEN_SYMBOL = "RObR";
+const CDP_UNAUTHORIZED_ERROR =
+  "Unauthorized CDP API credentials. Verify CDP_API_KEY/CDP_PRIVATE_KEY/CDP_WALLET_SECRET in the Coinbase Developer Platform dashboard.";
 
 function loadWalletData() {
   if (!fs.existsSync(WALLET_DATA_PATH)) return undefined;
   const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8").trim();
-  return raw ? JSON.parse(raw) : undefined;
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Invalid wallet_data.txt format. Delete ${WALLET_DATA_PATH} to reset wallet state and force a fresh initialization on the next run.`,
+    );
+  }
 }
 
 async function resolvePaymasterUrl(credentials) {
@@ -49,6 +58,9 @@ async function resolvePaymasterUrl(credentials) {
   const response = await fetch("https://api.cdp.coinbase.com/apikeys/v1/tokens/active", {
     headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
   });
+  if (response.status === 401) {
+    throw new Error(CDP_UNAUTHORIZED_ERROR);
+  }
   if (!response.ok) throw new Error(`Paymaster URL lookup failed (${response.status})`);
   const { id } = await response.json();
   return `https://api.cdp.coinbase.com/rpc/v1/base/${id}`;
@@ -186,7 +198,12 @@ async function main() {
   try {
     result = await deployViaPaymaster();
   } catch (paymasterError) {
-    console.warn("Paymaster deploy failed:", paymasterError instanceof Error ? paymasterError.message : paymasterError);
+    const message =
+      paymasterError instanceof Error ? paymasterError.message : String(paymasterError);
+    if (message === CDP_UNAUTHORIZED_ERROR || message.startsWith("Invalid wallet_data.txt format.")) {
+      throw paymasterError;
+    }
+    console.warn("Paymaster deploy failed:", message);
     console.log("Falling back to Avocado USDC gas tank...\n");
     result = await deployViaAvocado();
   }
