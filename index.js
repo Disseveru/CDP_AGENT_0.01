@@ -378,6 +378,7 @@ function printHelp(tools) {
   console.log("  send <to> <amount>           Send native ETH (smart wallet mode)");
   console.log("  faucet                       Request Base Sepolia test funds (EOA mode)");
   console.log("  dsa accounts|build|recipes   Instadapp DSA account management");
+  console.log("  dsa scan|gas                 Flash-loan searcher scan / paymaster gas");
   console.log("  dsa encode <json>            Encode spells without broadcasting");
   console.log("  dsa cast <json> [--build]    Cast Instadapp spells on Base mainnet (8453)");
   console.log("  run <tool> [json]            Invoke any registered tool with JSON args");
@@ -508,9 +509,12 @@ async function runDsaCommand(command) {
       "  dsa build",
       "  dsa build-chains",
       "  dsa recipes",
+      "  dsa scan",
+      "  dsa gas",
       "  dsa encode <json-spells>",
       '  dsa cast <json-spells> [--build]',
       "",
+      "DSA uses DSA_PRIVATE_KEY (EOA). Gas is funded via CDP Paymaster when DSA_USE_PAYMASTER=1.",
       "dsa-connect targets Base mainnet (8453), not Base Sepolia.",
       "Example:",
       '  dsa cast \'[{"connector":"BASIC-A","method":"deposit","args":["0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","1000000000000000000",0,0]}]\' --build',
@@ -543,7 +547,8 @@ async function runDsaCommand(command) {
   }
 
   if (subcommand === "build") {
-    const txHash = await instadapp.buildDsaAccount(dsa, web3);
+    const buildResult = await instadapp.buildDsaAccount(dsa, web3, { chainId, signerAddress });
+    const txHash = buildResult.txHash;
     const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
@@ -557,12 +562,34 @@ async function runDsaCommand(command) {
         signerAddress,
       );
     }
-    return JSON.stringify({ txHash, accounts }, null, 2);
+    return JSON.stringify({ txHash, gasFunding: buildResult.gasFunding, accounts }, null, 2);
   }
 
   if (subcommand === "build-chains") {
     const result = await instadapp.buildDsaAccountsForChains();
     return JSON.stringify(result, null, 2);
+  }
+
+  if (subcommand === "scan") {
+    const opportunities = await instadapp.scanOpportunities();
+    return JSON.stringify({ opportunities, count: opportunities.length }, null, 2);
+  }
+
+  if (subcommand === "gas") {
+    const { ensureEoaGas, getNativeBalanceWei } = require("./lib/cdp/paymasterGas");
+    const balanceWei = await getNativeBalanceWei(signerAddress, chainId);
+    const funding = await ensureEoaGas(signerAddress, chainId, 500_000_000_000_000n);
+    return JSON.stringify(
+      {
+        signerAddress,
+        chainId,
+        chain: instadapp.formatChainLabel(chainId),
+        balanceWei: balanceWei.toString(),
+        funding,
+      },
+      null,
+      2,
+    );
   }
 
   if (subcommand === "encode" || subcommand === "cast") {

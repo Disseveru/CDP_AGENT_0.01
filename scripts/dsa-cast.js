@@ -36,6 +36,9 @@ Usage:
   node scripts/dsa-cast.js encode '<json-spells>'
   node scripts/dsa-cast.js cast '<json-spells>' [--valueWei <wei>] [--build]
   node scripts/dsa-cast.js cast-file <path> [--valueWei <wei>] [--build]
+  node scripts/dsa-cast.js scan|gas
+  npm run dsa:search -- scan
+  npm run dsa:search -- encode-opportunity '<json>'
 
 Environment:
   DSA_PRIVATE_KEY / PRIVATE_KEY / MNEMONIC_PHRASE   Signer for spell authority
@@ -129,7 +132,8 @@ async function main() {
   }
 
   if (command === "build") {
-    const txHash = await buildDsaAccount(dsa, web3);
+    const buildResult = await buildDsaAccount(dsa, web3, { chainId, signerAddress });
+    const txHash = buildResult.txHash;
     const accounts = await listDsaAccounts(dsa, signerAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
@@ -143,7 +147,7 @@ async function main() {
         signerAddress,
       );
     }
-    console.log(JSON.stringify({ txHash, accounts }, null, 2));
+    console.log(JSON.stringify({ txHash, gasFunding: buildResult.gasFunding, accounts }, null, 2));
     return;
   }
 
