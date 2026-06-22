@@ -31,6 +31,26 @@ const TWEET_URL = "https://x.com/elonmusk/status/2069089477511790812";
 const TOKEN_NAME = "Ro the Robber";
 const TOKEN_SYMBOL = "RObR";
 
+class PaymasterSubmitError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} userOpHash
+   */
+  constructor(message, userOpHash) {
+    super(message);
+    this.name = "PaymasterSubmitError";
+    this.paymasterUserOpSubmitted = true;
+    this.userOpHash = userOpHash;
+  }
+}
+
+/**
+ * @param {unknown} error
+ */
+function shouldFallbackToAvocado(error) {
+  return !(error instanceof PaymasterSubmitError);
+}
+
 function loadWalletData() {
   if (!fs.existsSync(WALLET_DATA_PATH)) return undefined;
   const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8").trim();
@@ -152,13 +172,18 @@ async function deployViaPaymaster() {
   });
   console.log("UserOp hash:", userOpHash);
 
-  const receipt = await walletProvider.waitForTransactionReceipt(userOpHash);
-  if (receipt.status !== "complete" || !receipt.transactionHash) {
-    throw new Error(`Paymaster deploy failed: ${JSON.stringify(receipt)}`);
-  }
+  try {
+    const receipt = await walletProvider.waitForTransactionReceipt(userOpHash);
+    if (receipt.status !== "complete" || !receipt.transactionHash) {
+      throw new Error(`Paymaster deploy failed: ${JSON.stringify(receipt)}`);
+    }
 
-  const tokenAddress = await waitForToken(publicClient, deployTx, receipt.transactionHash);
-  return { tokenAddress, txHash: receipt.transactionHash, broadcaster: "cdp-paymaster", admin };
+    const tokenAddress = await waitForToken(publicClient, deployTx, receipt.transactionHash);
+    return { tokenAddress, txHash: receipt.transactionHash, broadcaster: "cdp-paymaster", admin };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PaymasterSubmitError(message, userOpHash);
+  }
 }
 
 async function deployViaAvocado() {
@@ -186,6 +211,14 @@ async function main() {
   try {
     result = await deployViaPaymaster();
   } catch (paymasterError) {
+    if (!shouldFallbackToAvocado(paymasterError)) {
+      console.error(
+        `Paymaster user operation ${paymasterError.userOpHash} was submitted but confirmation failed. ` +
+          "Aborting to avoid deploying a duplicate token.",
+      );
+      throw paymasterError;
+    }
+
     console.warn("Paymaster deploy failed:", paymasterError instanceof Error ? paymasterError.message : paymasterError);
     console.log("Falling back to Avocado USDC gas tank...\n");
     result = await deployViaAvocado();
@@ -204,7 +237,14 @@ async function main() {
   console.log("Tweet:", TWEET_URL);
 }
 
-main().catch((error) => {
-  console.error("Fatal:", error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Fatal:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  PaymasterSubmitError,
+  shouldFallbackToAvocado,
+};

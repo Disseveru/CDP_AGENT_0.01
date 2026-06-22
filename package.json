@@ -22,7 +22,7 @@
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs scripts/deploy-robr.test.js"
   },
   "repository": {
     "type": "git",
