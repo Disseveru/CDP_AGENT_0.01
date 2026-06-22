@@ -223,15 +223,13 @@ async function main() {
       throw new Error("Usage: node scripts/dsa-cast.js encode '<json-spells>'");
     }
 
-    await ensureDsaInstance(dsa, web3, signerAddress, {
+    const ensured = await ensureDsaInstance(dsa, web3, signerAddress, {
       autoBuild: flags.build === true,
       chainId,
     });
-
-    const authorityAddress = await resolveDsaAuthorityAddress();
     const result = await castSpells(dsa, web3, spellsInput, {
       dryRun: true,
-      authorityAddress,
+      authorityAddress: ensured.authorityAddress,
       chainId,
     });
     console.log(JSON.stringify(result, null, 2));
