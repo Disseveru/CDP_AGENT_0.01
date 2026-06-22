@@ -11,17 +11,17 @@ const {
   createDsaClient,
   ensureDsaInstance,
   formatChainLabel,
+  getDsaGasStatus,
   loadSearcherConfig,
   resolveDsaChainId,
+  resolveSigningKey,
   scanOpportunities,
 } = require("../lib/instadapp");
-const { ensureEoaGas, getNativeBalanceWei } = require("../lib/cdp/paymasterGas");
-const { resolveSigningKey } = require("../lib/instadapp/client");
 
 function printUsage() {
   console.log(`Instadapp DSA searcher (flash loans, arbitrage, liquidations)
 
-Uses DSA_PRIVATE_KEY (EOA) for spell authority and CDP Paymaster to fund native gas.
+Uses DSA_PRIVATE_KEY (EOA owner) with the Avocado SDK USDC gas tank for L2 execution.
 
 Usage:
   node scripts/dsa-searcher.js config
@@ -31,11 +31,10 @@ Usage:
   node scripts/dsa-searcher.js cast-opportunity '<json>' [--build] [--dry-run]
 
 Environment:
-  DSA_PRIVATE_KEY              EOA private key (DSA authority signer)
+  DSA_PRIVATE_KEY              EOA private key (Avocado owner + DSA signer)
   DSA_CHAIN_ID                 Default chain (8453 Base)
-  DSA_USE_PAYMASTER            Default 1 — fund EOA gas via CDP paymaster
-  PAYMASTER_URL                Optional CDP paymaster override
-  CDP_API_KEY / CDP_PRIVATE_KEY / CDP_WALLET_SECRET`);
+  DSA_USE_AVOCADO              Default 1 — broadcast via Avocado USDC gas tank
+  DSA_USE_PAYMASTER            Set 0 to disable legacy CDP paymaster fallback`);
 }
 
 /**
@@ -98,38 +97,14 @@ async function main() {
   const signerAddress = new Web3().eth.accounts.privateKeyToAccount(privateKey).address;
 
   if (command === "gas") {
-    let balanceWei;
-    let funding;
-    try {
-      balanceWei = await getNativeBalanceWei(signerAddress, chainId);
-      funding = await ensureEoaGas(signerAddress, chainId, 500_000_000_000_000n);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.log(
-        JSON.stringify(
-          {
-            signerAddress,
-            chainId,
-            chain: formatChainLabel(chainId),
-            error: message,
-            hint:
-              "Fund the CDP Smart Wallet with native ETH on this chain. Paymaster covers gas; the wallet supplies the transfer value.",
-          },
-          null,
-          2,
-        ),
-      );
-      return;
-    }
-
+    const gasStatus = await getDsaGasStatus(signerAddress, chainId);
     console.log(
       JSON.stringify(
         {
-          signerAddress,
+          ownerAddress: signerAddress,
           chainId,
           chain: formatChainLabel(chainId),
-          balanceWei: balanceWei.toString(),
-          funding,
+          ...gasStatus,
         },
         null,
         2,
@@ -171,6 +146,7 @@ async function main() {
         dryRun: true,
         chainId: targetChainId,
         signerAddress,
+        flashLoan: true,
       });
       console.log(JSON.stringify({ opportunity: enriched, spells, ...result }, null, 2));
       return;
@@ -179,6 +155,7 @@ async function main() {
     const result = await castSpells(dsa, web3, spells, {
       chainId: targetChainId,
       signerAddress,
+      flashLoan: true,
     });
     console.log(JSON.stringify({ opportunity: enriched, spells, ...result }, null, 2));
     return;

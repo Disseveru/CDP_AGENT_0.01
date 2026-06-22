@@ -514,7 +514,7 @@ async function runDsaCommand(command) {
       "  dsa encode <json-spells>",
       '  dsa cast <json-spells> [--build]',
       "",
-      "DSA uses DSA_PRIVATE_KEY (EOA). Gas is funded via CDP Paymaster when DSA_USE_PAYMASTER=1.",
+      "DSA uses DSA_PRIVATE_KEY (EOA owner). DSA authority is the Avocado safe; gas is paid from the USDC gas tank.",
       "dsa-connect targets Base mainnet (8453), not Base Sepolia.",
       "Example:",
       '  dsa cast \'[{"connector":"BASIC-A","method":"deposit","args":["0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","1000000000000000000",0,0]}]\' --build',
@@ -541,15 +541,11 @@ async function runDsaCommand(command) {
   const autoBuild = args.includes("--build");
   const jsonText = args.filter((token) => token !== "--build").join(" ").trim();
 
-  if (subcommand === "accounts") {
-    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
-    return JSON.stringify({ signerAddress, chainId, accounts }, null, 2);
-  }
-
   if (subcommand === "build") {
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
     const buildResult = await instadapp.buildDsaAccount(dsa, web3, { chainId, signerAddress });
     const txHash = buildResult.txHash;
-    const accounts = await instadapp.listDsaAccounts(dsa, signerAddress);
+    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
     const instance = accounts[0] ? await dsa.setInstance(accounts[0].id) : null;
     if (instance) {
       instadapp.saveDsaChainState(
@@ -562,7 +558,11 @@ async function runDsaCommand(command) {
         signerAddress,
       );
     }
-    return JSON.stringify({ txHash, gasFunding: buildResult.gasFunding, accounts }, null, 2);
+    return JSON.stringify(
+      { txHash, gasFunding: buildResult.gasFunding, authorityAddress, accounts },
+      null,
+      2,
+    );
   }
 
   if (subcommand === "build-chains") {
@@ -576,17 +576,26 @@ async function runDsaCommand(command) {
   }
 
   if (subcommand === "gas") {
-    const { ensureEoaGas, getNativeBalanceWei } = require("./lib/cdp/paymasterGas");
-    const balanceWei = await getNativeBalanceWei(signerAddress, chainId);
-    const funding = await ensureEoaGas(signerAddress, chainId, 500_000_000_000_000n);
+    const gasStatus = await instadapp.getDsaGasStatus(signerAddress, chainId);
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
     return JSON.stringify(
       {
-        signerAddress,
+        ownerAddress: signerAddress,
+        authorityAddress,
         chainId,
         chain: instadapp.formatChainLabel(chainId),
-        balanceWei: balanceWei.toString(),
-        funding,
+        ...gasStatus,
       },
+      null,
+      2,
+    );
+  }
+
+  if (subcommand === "accounts") {
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
+    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
+    return JSON.stringify(
+      { ownerAddress: signerAddress, authorityAddress, chainId, accounts },
       null,
       2,
     );

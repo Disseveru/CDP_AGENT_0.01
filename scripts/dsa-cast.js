@@ -12,11 +12,13 @@ const {
   createDsaClient,
   ensureDsaInstance,
   formatChainLabel,
+  getDsaGasStatus,
   listDsaAccounts,
   listRecipes,
   loadDsaChainState,
   loadDsaState,
   parseSpellsInput,
+  resolveDsaAuthorityAddress,
   resolveDsaChainId,
   saveDsaChainState,
   saveDsaState,
@@ -109,14 +111,16 @@ async function main() {
   const { dsa, web3, chainId, signerAddress } = createDsaClient();
   const state = loadDsaState();
 
-  if (command === "status") {
+  if (command === "accounts") {
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
+    const accounts = await instadapp.listDsaAccounts(dsa, authorityAddress);
     console.log(
       JSON.stringify(
         {
+          ownerAddress: signerAddress,
+          authorityAddress,
           chainId,
-          chain: formatChainLabel(chainId),
-          signerAddress,
-          persisted: state,
+          accounts,
         },
         null,
         2,
@@ -125,9 +129,23 @@ async function main() {
     return;
   }
 
-  if (command === "accounts") {
-    const accounts = await listDsaAccounts(dsa, signerAddress);
-    console.log(JSON.stringify({ signerAddress, chainId, accounts }, null, 2));
+  if (command === "status") {
+    const authorityAddress = await instadapp.resolveDsaAuthorityAddress();
+    const gasStatus = await instadapp.getDsaGasStatus(signerAddress, chainId);
+    console.log(
+      JSON.stringify(
+        {
+          chainId,
+          chain: formatChainLabel(chainId),
+          ownerAddress: signerAddress,
+          authorityAddress,
+          gas: gasStatus,
+          persisted: state,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 

@@ -19,7 +19,7 @@
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js"
   },
   "repository": {
     "type": "git",
@@ -38,9 +38,11 @@
   "dependencies": {
     "@coinbase/agentkit": "^0.10.4",
     "@coinbase/agentkit-langchain": "^0.3.0",
+    "@instadapp/avocado": "^0.4.5",
     "@langchain/core": "^1.1.48",
     "dotenv": "^17.4.2",
     "dsa-connect": "^0.7.52",
+    "ethers": "^5.7.2",
     "web3": "^1.10.4"
   },
   "overrides": {
@@ -53,18 +55,17 @@
     "elliptic": "^6.6.1",
     "form-data": "^4.0.6",
     "qs": "^6.14.1",
-    "request": "npm:@cypress/request@^4.0.1",
-    "servify": {
-      "request": "npm:@cypress/request@^4.0.1"
-    },
-    "tar": "^7.4.3",
-    "tough-cookie": "^4.1.4",
-    "uuid": "^11.1.1",
     "request": {
       "form-data": "^4.0.6",
       "qs": "^6.14.1",
       "tough-cookie": "^4.1.4",
       "uuid": "^11.1.1"
-    }
+    },
+    "servify": {
+      "request": "npm:@cypress/request@^4.0.1"
+    },
+    "tar": "^7.4.3",
+    "tough-cookie": "^4.1.4",
+    "uuid": "^11.1.1"
   }
 }
