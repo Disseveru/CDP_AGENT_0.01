@@ -48,7 +48,18 @@ This repo includes the Coinbase [agentic-wallet](https://github.com/coinbase/age
 | Public URL | `https://gas-oracle-mcp-production.up.railway.app` |
 | Network | **Base mainnet** (`NETWORK=base`, chain `eip155:8453`) — real USDC, not testnet |
 | MCP SSE endpoint | `https://gas-oracle-mcp-production.up.railway.app/sse` |
-| Health / ready | `/health` (liveness), `/ready` (CDP/x402 init) |
+| Health / ready | `/health` (liveness + storage/redis status), `/ready` (CDP/x402 init) |
+
+**Railway project services (production):**
+
+| Service | Purpose |
+|---|---|
+| `gas-oracle-mcp` | AgentWire MCP (main app) |
+| `Postgres` | Durable inbox storage (`DATABASE_URL` reference on MCP) |
+| `Redis` | Webhook rate limiting (`REDIS_URL` via private networking) |
+| `gas-oracle-mcp-volume` | Ephemeral-disk fallback mounted at `/app/gas-oracle-mcp/data` |
+
+Provision or refresh wiring: `RAILWAY_TOKEN=... npm run railway:provision -- --redeploy`
 
 The root CLI still defaults to **Base Sepolia** locally. Only the Railway AgentWire service runs on mainnet.
 

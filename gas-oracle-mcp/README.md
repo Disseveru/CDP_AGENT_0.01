@@ -23,7 +23,27 @@ This is real infrastructure, not a demo. Every agent loop that waits for externa
 | `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
 | `peek_inbox` | $0.002 | Read events without clearing |
 | `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
-| `ping` | **free** | Health check |
+| `relay_post` | $0.015 | POST JSON to a public URL and return the response |
+| `ping` | **free** | Health check (includes storage/redis status) |
+
+### Production Railway services
+
+AgentWire production runs as a multi-service Railway project:
+
+| Service | Role |
+|---|---|
+| **gas-oracle-mcp** | MCP server (this app) |
+| **Postgres** | Durable inbox storage — wired via `DATABASE_URL=${{Postgres.DATABASE_URL}}` |
+| **Redis** | Webhook rate limiting — wired via private `REDIS_URL` |
+| **Volume** | Mounted at `/app/gas-oracle-mcp/data` for file-backed fallback |
+
+From the repo root, provision or refresh service wiring:
+
+```bash
+RAILWAY_TOKEN=... npm run railway:provision -- --redeploy
+```
+
+`npm run railway:diagnose` reports `/health`, `/ready`, MCP auth, and Railway variable format checks.
 
 ## Deploy in 10 minutes (no coding — works from your phone)
 
