@@ -41,14 +41,19 @@ function renderEmailDocument(title: string, bodySections: readonly string[]): st
  */
 export function renderOperatorAlertEmail(alert: SanitizedOperatorAlert): string {
   const solveUrl = sanitizeHttpsUrl(alert.solveUrl, "solveUrl");
-  const pageUrl = sanitizeHttpsUrl(alert.pageUrl, "pageUrl");
+  const pageUrl = alert.pageUrl;
+
+  const pageDisplay =
+    pageUrl.startsWith("https://")
+      ? renderExternalLink(pageUrl, pageUrl)
+      : escapeHtml(pageUrl);
 
   const sections: EmailSection[] = [
     { label: "Task", valueHtml: escapeHtml(alert.taskId) },
     { label: "Type", valueHtml: escapeHtml(alert.captchaType) },
     {
       label: "Page",
-      valueHtml: renderExternalLink(pageUrl, pageUrl),
+      valueHtml: pageDisplay,
     },
   ];
 
