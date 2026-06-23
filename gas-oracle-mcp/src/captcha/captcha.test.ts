@@ -6,7 +6,8 @@ import { buildEmailHtml, buildEmailSubject, buildSmsBody } from "./notifications
 import {
   NotificationConfigError,
   parseNotificationSettings,
-  parseOperatorAlertUrls,
+  parseOperatorAlertPageUrl,
+  parseOperatorAlertSolveUrl,
   TWILIO_API_BASE_URL,
 } from "./notification-config.js";
 import { renderSolvePage } from "./solve-page.js";
@@ -129,18 +130,39 @@ test("parseNotificationSettings validates complete SMTP configuration", () => {
   assert.equal(settings.email.port, 587);
 });
 
-test("parseOperatorAlertUrls rejects non-https URLs", () => {
+test("parseOperatorAlertSolveUrl rejects non-https solve links", () => {
   assert.throws(
-    () =>
-      parseOperatorAlertUrls({
-        solveUrl: "http://example.com/solve",
-        pageUrl: "https://example.com",
-      }),
+    () => parseOperatorAlertSolveUrl("http://example.com/solve"),
     (error: unknown) => {
       assert.ok(error instanceof NotificationConfigError);
       return true;
     },
   );
+});
+
+test("parseOperatorAlertPageUrl accepts http target pages", () => {
+  assert.equal(parseOperatorAlertPageUrl("http://example.com/login"), "http://example.com/login");
+});
+
+test("buildSmsBody succeeds when target page uses http", () => {
+  const body = buildSmsBody({
+    ...baseAlert,
+    pageUrl: "http://example.com/login",
+  });
+  assert.match(body, /Solve here: https:\/\//);
+  assert.doesNotMatch(body, /http:\/\/example\.com\/login/);
+});
+
+test("buildEmailHtml renders http page URLs as text without clickable links", () => {
+  const html = buildEmailHtml({
+    taskId: "task-123",
+    solveUrl: "https://example.com/solve/task-123",
+    captchaType: "recaptcha",
+    pageUrl: "http://example.com/login",
+  });
+
+  assert.match(html, /http:\/\/example\.com\/login/);
+  assert.doesNotMatch(html, /href="http:\/\/example\.com\/login"/);
 });
 
 test("buildSmsBody includes sanitized task id and solve URL", () => {
@@ -168,7 +190,7 @@ test("buildEmailHtml escapes injected markup in alert fields", () => {
   });
 
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
-  assert.match(html, /%3Cscript%3Ealert\(1\)%3C\/script%3E/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /<strong>Task:<\/strong> task-123/);
   assert.match(html, /Solve now/);
 });
