@@ -1,19 +1,11 @@
 import { captchaWidgetScript } from "./tasks.js";
+import { escapeHtml, escapeHtmlAttribute } from "./html.js";
 import type { CaptchaTask } from "./types.js";
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 export function renderSolvePage(task: CaptchaTask): string {
   const { scriptUrl, globalName } = captchaWidgetScript(task.captcha_type);
-  const sitekey = escapeHtml(task.sitekey);
-  const taskId = escapeHtml(task.task_id);
+  const sitekey = escapeHtmlAttribute(task.sitekey);
+  const taskId = escapeHtmlAttribute(task.task_id);
   const pageurl = escapeHtml(task.pageurl);
 
   const widgetMount =
