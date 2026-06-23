@@ -25,6 +25,15 @@ import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
+import {
+  completeCaptchaTask,
+  createCaptchaTask,
+  getCaptchaStatus,
+  parseSubmitBody,
+  waitForCaptchaSolution,
+} from "./captcha/tasks.js";
+import { getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
+import { renderSolvePage } from "./captcha/solve-page.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
@@ -238,6 +247,60 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
         body: args.body,
       }),
   },
+  {
+    name: "request_human_captcha_bypass",
+    description:
+      `Queue a CAPTCHA barrier for human-in-the-loop solving. Instantly SMS + emails the operator ` +
+      `with a mobile solve link on ${CONFIG.publicUrl}/solve/{task_id}, then blocks until the ` +
+      `solution token is ready. Supports reCAPTCHA, hCaptcha, and Turnstile. ` +
+      `Costs ${CONFIG.prices.captchaBypass} USDC per call.`,
+    price: CONFIG.prices.captchaBypass,
+    zodShape: {
+      sitekey: z.string().describe("CAPTCHA site key from the target page"),
+      pageurl: z.string().url().describe("URL of the page showing the CAPTCHA"),
+      captcha_type: z
+        .enum(["recaptcha", "hcaptcha", "turnstile"])
+        .describe("CAPTCHA provider type"),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        sitekey: { type: "string" },
+        pageurl: { type: "string", format: "uri" },
+        captcha_type: { type: "string", enum: ["recaptcha", "hcaptcha", "turnstile"] },
+      },
+      required: ["sitekey", "pageurl", "captcha_type"],
+    },
+    example: {
+      sitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
+      pageurl: "https://example.com/login",
+      captcha_type: "recaptcha",
+    },
+    outputExample: {
+      task_id: "550e8400-e29b-41d4-a716-446655440000",
+      status: "completed",
+      solution_token: "03AGdBq24...",
+      solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
+    },
+    handler: async (args) => {
+      if (!isCaptchaStorageConfigured()) {
+        throw new Error("CAPTCHA storage unavailable: REDIS_URL must be configured on Railway");
+      }
+      const created = await createCaptchaTask({
+        sitekey: String(args.sitekey),
+        pageurl: String(args.pageurl),
+        captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
+      });
+      const solved = await waitForCaptchaSolution(created.task_id);
+      return {
+        task_id: solved.task_id,
+        status: solved.status,
+        solution_token: solved.solution_token,
+        solve_url: created.solve_url,
+        completed_at: solved.completed_at,
+      };
+    },
+  },
 ];
 
 interface PreparedTool {
@@ -337,7 +400,7 @@ function buildServiceCard(state: RuntimeState): Record<string, unknown> {
     service: CONFIG.serviceName,
     version: CONFIG.serviceVersion,
     status: state.status,
-    tagline: "Webhook inbox + web fetch + outbound relay for autonomous agents",
+    tagline: "Webhook inbox + web fetch + outbound relay + human CAPTCHA bypass for autonomous agents",
     protocol: "MCP over Streamable HTTP + SSE + x402 v2 payments",
     endpoint: `${CONFIG.publicUrl}/mcp`,
     sseEndpoint: `${CONFIG.publicUrl}/sse`,
@@ -446,6 +509,89 @@ async function handleDiscoveryRequest(
   }
 
   res.json(body);
+}
+
+async function handleCaptchaSubmitRequest(
+  req: Request,
+  res: Response,
+  state: RuntimeState,
+): Promise<void> {
+  if (!isReady(state)) {
+    res.status(503).json({ error: "Payments unavailable", status: state.status });
+    return;
+  }
+
+  if (!isCaptchaStorageConfigured()) {
+    res.status(503).json({
+      error: "captcha_storage_unavailable",
+      message: "CAPTCHA task storage requires REDIS_URL on Railway",
+    });
+    return;
+  }
+
+  let input;
+  try {
+    input = parseSubmitBody(req.body);
+  } catch (error) {
+    res.status(400).json({
+      error: "invalid_request",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  const requestContext: HTTPRequestContext = {
+    adapter: createExpressHttpAdapter(req),
+    path: req.path,
+    method: req.method,
+    paymentHeader: req.get("payment-signature") || req.get("x-payment"),
+  };
+  const paymentResult = await state.discoveryHttpServer.processHTTPRequest(requestContext);
+
+  if (paymentResult.type === "payment-error") {
+    writeHttpInstructions(res, paymentResult.response);
+    return;
+  }
+
+  if (paymentResult.type !== "payment-verified") {
+    res.status(500).json({ error: "unexpected_payment_state" });
+    return;
+  }
+
+  let created;
+  try {
+    created = await createCaptchaTask(input);
+  } catch (error) {
+    console.error("[captcha] Task creation failed after payment verification:", error);
+    res.status(503).json({
+      error: "captcha_task_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  const body = created;
+  const responseBody = Buffer.from(JSON.stringify(body));
+  const settlement = await state.discoveryHttpServer.processSettlement(
+    paymentResult.paymentPayload,
+    paymentResult.paymentRequirements,
+    paymentResult.declaredExtensions,
+    {
+      request: requestContext,
+      responseBody,
+      responseHeaders: { "Content-Type": "application/json" },
+    },
+  );
+
+  if (!settlement.success) {
+    writeHttpInstructions(res, settlement.response);
+    return;
+  }
+
+  for (const [name, value] of Object.entries(settlement.headers)) {
+    res.setHeader(name, value);
+  }
+  res.status(201).json(body);
 }
 
 interface PendingDrainAck {
@@ -799,6 +945,56 @@ async function main(): Promise<void> {
     handleDiscoveryRequest(req, res, state).catch(next);
   });
 
+  app.post("/api/v1/captcha/submit", (req, res, next) => {
+    handleCaptchaSubmitRequest(req, res, state).catch(next);
+  });
+
+  app.get("/api/v1/captcha/status", async (req, res) => {
+    const taskId = req.query.task_id;
+    if (typeof taskId !== "string" || !taskId) {
+      res.status(400).json({ error: "task_id query parameter required" });
+      return;
+    }
+    const status = await getCaptchaStatus(taskId);
+    if (!status) {
+      res.status(404).json({ error: "task_not_found" });
+      return;
+    }
+    res.json(status);
+  });
+
+  app.get("/solve/:taskId", async (req, res) => {
+    const task = await getCaptchaTask(req.params.taskId);
+    if (!task) {
+      res.status(404).send("Task not found");
+      return;
+    }
+    if (task.status === "completed") {
+      res.status(200).send("<p>Already solved. Agent can poll /api/v1/captcha/status.</p>");
+      return;
+    }
+    res.type("html").send(renderSolvePage(task));
+  });
+
+  app.post("/api/v1/captcha/solve/:taskId", async (req, res) => {
+    const solutionToken =
+      typeof req.body?.solution_token === "string" ? req.body.solution_token.trim() : "";
+    if (!solutionToken) {
+      res.status(400).json({ error: "solution_token required" });
+      return;
+    }
+    const updated = await completeCaptchaTask(req.params.taskId, solutionToken);
+    if (!updated) {
+      res.status(404).json({ error: "task_not_found" });
+      return;
+    }
+    res.json({
+      task_id: updated.task_id,
+      status: updated.status,
+      completed_at: updated.completed_at,
+    });
+  });
+
   app.get("/health", async (_req, res) => {
     const [storage, redis] = await Promise.all([getStorageHealth(), getRedisHealth()]);
     res.json({
@@ -839,6 +1035,8 @@ async function main(): Promise<void> {
     console.log(`[boot] MCP endpoint:     ${CONFIG.publicUrl}/mcp`);
     console.log(`[boot] SSE endpoint:     ${CONFIG.publicUrl}/sse`);
     console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
+    console.log(`[boot] CAPTCHA submit:   ${CONFIG.publicUrl}/api/v1/captcha/submit`);
+    console.log(`[boot] CAPTCHA solve:    ${CONFIG.publicUrl}/solve/{task_id}`);
     if (CONFIG.mcpApiKey) {
       console.log("[boot] MCP API key auth enabled for /mcp, /sse, and /messages");
     }

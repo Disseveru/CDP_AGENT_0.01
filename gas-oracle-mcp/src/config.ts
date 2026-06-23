@@ -88,7 +88,27 @@ export const CONFIG = {
     fetchUrl: process.env.PRICE_FETCH_URL || "$0.012",
     extractLinks: process.env.PRICE_EXTRACT_LINKS || "$0.008",
     relayPost: process.env.PRICE_RELAY_POST || "$0.015",
+    captchaSubmit: process.env.PRICE_CAPTCHA_SUBMIT || "$0.050",
+    captchaBypass: process.env.PRICE_CAPTCHA_BYPASS || "$0.075",
+  },
+  captcha: {
+    taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
+    pollTimeoutMs: Number(process.env.CAPTCHA_POLL_TIMEOUT_MS || 300_000),
+    pollIntervalMs: Number(process.env.CAPTCHA_POLL_INTERVAL_MS || 2000),
+    operatorSmsNumber: process.env.OPERATOR_SMS_NUMBER?.trim() || "+17472241814",
+    operatorEmail: process.env.OPERATOR_EMAIL?.trim() || undefined,
+    twilio: {
+      accountSid: process.env.TWILIO_ACCOUNT_SID?.trim() || undefined,
+      authToken: process.env.TWILIO_AUTH_TOKEN?.trim() || undefined,
+      fromNumber: process.env.TWILIO_FROM_NUMBER?.trim() || undefined,
+    },
+    smtp: {
+      host: process.env.SMTP_HOST?.trim() || "smtp.gmail.com",
+      port: Number(process.env.SMTP_PORT || 587),
+      user: process.env.SMTP_USER?.trim() || undefined,
+      pass: process.env.SMTP_PASS?.trim() || undefined,
+    },
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.1.0",
+  serviceVersion: "1.2.0",
 } as const;

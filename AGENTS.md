@@ -40,8 +40,23 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 |---|---|
 | Install dependencies | `npm install` |
 | Bootstrap Agentic Market + Wallet (every agent session) | `npm run bootstrap:agent` |
+| **Run CI (Cursor — use instead of GitHub Actions)** | `npm run ci` |
 | Install agentic-wallet skill (Cursor) | `npm run skills:install` |
 | Start interactive CLI REPL | `npm start` or `node index.js` |
+
+### CI in Cursor (not GitHub Actions)
+
+**Primary CI for this repo runs in Cursor**, not GitHub Actions. Cloud Agents and local Cursor sessions should run:
+
+```bash
+npm run ci
+```
+
+before every commit, push, or PR update. The script (`scripts/ci.mjs`) installs deps, builds AgentWire, and runs all unit tests — the same steps the old GitHub workflow used.
+
+GitHub Actions is **manual-only** (`workflow_dispatch`) because account billing may block automatic PR runs. To trigger it anyway: GitHub → Actions → **CI (manual)** → Run workflow.
+
+Cloud Agents already run in a full Linux VM with network access, so `npm run ci` is the intended verification path.
 
 ### Agentic Market + Agentic Wallet skills
 
@@ -84,6 +99,14 @@ This repo also includes the Coinbase [agentic-wallet](https://github.com/coinbas
 
 Provision or refresh wiring: `RAILWAY_TOKEN=... npm run railway:provision -- --redeploy`
 
+Provision CAPTCHA operator notifications (SMS + Gmail):
+
+```bash
+RAILWAY_TOKEN=... npm run railway:provision-notifications -- --redeploy
+```
+
+Operator defaults: SMS `+17472241814`, email `er2k18@gmail.com`. Set `TWILIO_*` and `SMTP_PASS` (Gmail app password) in Cursor Cloud secrets or export locally before running the script.
+
 The root CLI still defaults to **Base Sepolia** locally. Only the Railway AgentWire service runs on mainnet.
 
 ### Cursor MCP setup (for new agents)
@@ -113,7 +136,20 @@ npm run verify:cursor-mcp
 RAILWAY_TOKEN=... npm run railway:diagnose
 ```
 
-After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp**. Expect tools: `create_inbox`, `drain_inbox`, `peek_inbox`, `inbox_stats`, `fetch_url`, `extract_links`, `relay_post`, `ping`.
+After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp**. Expect tools: `create_inbox`, `drain_inbox`, `peek_inbox`, `inbox_stats`, `fetch_url`, `extract_links`, `relay_post`, `request_human_captcha_bypass`, `ping`.
+
+**Human-in-the-loop CAPTCHA** (same Railway host):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/captcha/submit` | x402-paid task submission (402 + `PAYMENT-REQUIRED` header when unpaid) |
+| `GET /api/v1/captcha/status?task_id=` | Agent polls for `solution_token` when `status=completed` |
+| `GET /solve/{task_id}` | Mobile solve page for the operator (SMS/email link target) |
+| `POST /api/v1/captcha/solve/{task_id}` | Operator submits `solution_token` from the solve page |
+
+MCP tool `request_human_captcha_bypass` runs the full lifecycle: queue task → SMS/email operator → block until solved → return token.
+
+Railway env vars for operator alerts: `OPERATOR_SMS_NUMBER` (default `+17472241814`), `OPERATOR_EMAIL`, `TWILIO_*`, `SMTP_*`. Requires `REDIS_URL` for task storage.
 
 **Railway API access from cloud agents:** `RAILWAY_TOKEN` (injected) supports **read** operations via GraphQL (logs, variables, deployments). Secret variable **writes** are blocked from this environment (403); update `CDP_*` or `MCP_API_KEY` in the Railway dashboard if credentials are corrupted.
 

@@ -1,9 +1,9 @@
-name: CI
+# Primary CI runs in Cursor (Cloud Agents + local): `npm run ci`
+# This workflow is manual-only — GitHub Actions billing may block automatic PR runs.
+name: CI (manual)
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,20 +16,5 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Install root dependencies
-        run: npm install
-
-      - name: Test root CLI
-        run: npm test
-
-      - name: Install AgentWire dependencies
-        working-directory: gas-oracle-mcp
-        run: npm install --legacy-peer-deps
-
-      - name: Build AgentWire
-        working-directory: gas-oracle-mcp
-        run: npm run build
-
-      - name: Test AgentWire
-        working-directory: gas-oracle-mcp
-        run: npm test
+      - name: Run Cursor CI script
+        run: npm run ci
