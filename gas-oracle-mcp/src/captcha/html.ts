@@ -26,3 +26,17 @@ export function sanitizeHttpsUrl(value: string, fieldName: string): string {
   }
   return parsed.toString();
 }
+
+/** Allow http or https absolute URLs (e.g. agent-submitted page targets). */
+export function sanitizeHttpUrl(value: string, fieldName: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${fieldName} must be a valid absolute URL`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`${fieldName} must use http or https`);
+  }
+  return parsed.toString();
+}

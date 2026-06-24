@@ -1,4 +1,4 @@
-import { escapeHtml, escapeHtmlAttribute, sanitizeHttpsUrl } from "./html.js";
+import { escapeHtml, escapeHtmlAttribute, sanitizeHttpUrl, sanitizeHttpsUrl } from "./html.js";
 import type { SanitizedOperatorAlert } from "./types.js";
 
 interface EmailSection {
@@ -37,11 +37,11 @@ function renderEmailDocument(title: string, bodySections: readonly string[]): st
 
 /**
  * Build the operator alert email from strictly typed, pre-validated alert data.
- * All dynamic values are HTML-escaped; URLs are restricted to https.
+ * All dynamic values are HTML-escaped; solve links require https.
  */
 export function renderOperatorAlertEmail(alert: SanitizedOperatorAlert): string {
   const solveUrl = sanitizeHttpsUrl(alert.solveUrl, "solveUrl");
-  const pageUrl = sanitizeHttpsUrl(alert.pageUrl, "pageUrl");
+  const pageUrl = sanitizeHttpUrl(alert.pageUrl, "pageUrl");
 
   const sections: EmailSection[] = [
     { label: "Task", valueHtml: escapeHtml(alert.taskId) },

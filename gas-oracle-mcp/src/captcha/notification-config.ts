@@ -16,6 +16,16 @@ const httpsUrlSchema = z
   .url()
   .refine((value) => value.startsWith("https://"), "must use https");
 
+/** Target page URLs may be http or https (matches captcha submit schema). */
+const pageUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .refine(
+    (value) => value.startsWith("http://") || value.startsWith("https://"),
+    "must use http or https",
+  );
+
 const twilioAccountSidSchema = z
   .string()
   .trim()
@@ -181,7 +191,7 @@ export function parseOperatorAlertUrls(input: {
 }): { solveUrl: string; pageUrl: string } {
   const schema = z.object({
     solveUrl: httpsUrlSchema,
-    pageUrl: httpsUrlSchema,
+    pageUrl: pageUrlSchema,
   });
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
