@@ -13,6 +13,18 @@
 
 Paid external capabilities should go through Agentic Market discovery (`https://api.agentic.market/v1/services/`) and `npx awal x402 pay <url>` unless the task is specifically about this repo's AgentWire MCP server.
 
+### Continuous integration (Cursor)
+
+Pull request CI does **not** use GitHub-hosted runners (billing). Instead:
+
+| Item | Detail |
+|---|---|
+| Test script | `npm run ci` or `bash scripts/ci.sh` |
+| PR gate | Cursor Cloud Agent Automation — see `.cursor/ci-automation.md` |
+| Manual GHA | `workflow_dispatch` on `.github/workflows/ci.yml` when Actions billing is available |
+
+Cloud agents and Automations should run `scripts/ci.sh` on PR branches and comment pass/fail on the pull request.
+
 ## Cursor Cloud specific instructions
 
 ### Project overview
