@@ -112,9 +112,12 @@ contract CompoundLiquidator {
         }
 
         uint256 owed = amounts[0] + premiums[0];
+        uint256 balance = IERC20(params.baseToken).balanceOf(address(this));
+        require(balance >= owed, "insufficient repay balance");
+
         require(IERC20(params.baseToken).approve(aggregator, owed), "repay approve failed");
 
-        uint256 profit = IERC20(params.baseToken).balanceOf(address(this));
+        uint256 profit = balance - owed;
         if (profit > 0) {
             require(IERC20(params.baseToken).transfer(owner, profit), "profit transfer failed");
         }
