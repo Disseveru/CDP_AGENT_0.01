@@ -1,5 +1,7 @@
 import { config as loadEnv } from "dotenv";
 
+import { parseNotificationSettings } from "./captcha/notification-config.js";
+
 loadEnv();
 
 export type PaymentNetwork = "base-sepolia" | "base";
@@ -95,19 +97,7 @@ export const CONFIG = {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
     pollTimeoutMs: Number(process.env.CAPTCHA_POLL_TIMEOUT_MS || 300_000),
     pollIntervalMs: Number(process.env.CAPTCHA_POLL_INTERVAL_MS || 2000),
-    operatorSmsNumber: process.env.OPERATOR_SMS_NUMBER?.trim() || "+17472241814",
-    operatorEmail: process.env.OPERATOR_EMAIL?.trim() || undefined,
-    twilio: {
-      accountSid: process.env.TWILIO_ACCOUNT_SID?.trim() || undefined,
-      authToken: process.env.TWILIO_AUTH_TOKEN?.trim() || undefined,
-      fromNumber: process.env.TWILIO_FROM_NUMBER?.trim() || undefined,
-    },
-    smtp: {
-      host: process.env.SMTP_HOST?.trim() || "smtp.gmail.com",
-      port: Number(process.env.SMTP_PORT || 587),
-      user: process.env.SMTP_USER?.trim() || undefined,
-      pass: process.env.SMTP_PASS?.trim() || undefined,
-    },
+    notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
   serviceVersion: "1.2.0",

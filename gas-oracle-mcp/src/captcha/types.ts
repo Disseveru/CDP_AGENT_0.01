@@ -33,3 +33,10 @@ export interface CaptchaStatusResult {
   created_at: string;
   completed_at?: string;
 }
+
+export interface SanitizedOperatorAlert {
+  readonly taskId: string;
+  readonly solveUrl: string;
+  readonly captchaType: CaptchaType;
+  readonly pageUrl: string;
+}
