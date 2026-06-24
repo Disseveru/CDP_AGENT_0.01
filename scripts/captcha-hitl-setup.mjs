@@ -23,6 +23,7 @@ const repoRoot = join(__dirname, "..");
 const DEFAULTS = {
   publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
   operatorSms: "+17472241814",
+  consentPageUrl: "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html",
 };
 
 const { values: args } = parseArgs({
@@ -53,12 +54,18 @@ async function checkProduction() {
   console.log("\n=== Production checks ===");
   const publicUrl = (process.env.PUBLIC_URL || DEFAULTS.publicUrl).replace(/\/$/, "");
 
-  for (const path of ["/health", "/ready", "/operator-sms-consent"]) {
+  for (const path of ["/health", "/ready"]) {
     const response = await fetch(`${publicUrl}${path}`);
     console.log(`${path}: ${response.status}`);
-    if (path === "/operator-sms-consent" && response.status !== 200) {
-      throw new Error("Operator SMS consent page is not live — redeploy AgentWire first.");
-    }
+  }
+
+  const consentUrl = process.env.TFV_OPT_IN_URL?.trim() || DEFAULTS.consentPageUrl;
+  const consentResponse = await fetch(consentUrl);
+  console.log(`consent page (${consentUrl}): ${consentResponse.status}`);
+  if (consentResponse.status !== 200) {
+    throw new Error(
+      `Operator SMS consent page is not live at ${consentUrl}. Enable GitHub Pages or set TFV_OPT_IN_URL.`,
+    );
   }
 }
 
@@ -134,7 +141,7 @@ async function main() {
 
   console.log("\nSetup complete.");
   console.log("Next: wait for Twilio toll-free approval (3–5 business days) if you submitted verification.");
-  console.log(`Consent page for Twilio review: ${(process.env.PUBLIC_URL || DEFAULTS.publicUrl).replace(/\/$/, "")}/operator-sms-consent`);
+  console.log(`Consent page for Twilio review: ${process.env.TFV_OPT_IN_URL?.trim() || DEFAULTS.consentPageUrl}`);
 }
 
 main().catch((error) => {

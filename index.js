@@ -19,10 +19,11 @@ const { CdpClient } = require("@coinbase/cdp-sdk");
 const { generateJwt } = require("@coinbase/cdp-sdk/auth");
 const { getLangChainTools } = require("@coinbase/agentkit-langchain");
 const instadapp = require("./lib/instadapp");
+const walletPolicy = require("./lib/cdp/wallet-policy");
 
 dotenv.config();
 
-const WALLET_DATA_PATH = path.join(__dirname, "wallet_data.txt");
+const WALLET_DATA_PATH = walletPolicy.WALLET_DATA_PATH;
 const NETWORK_ID = process.env.NETWORK_ID || "base-sepolia";
 
 const DEFAULT_RPC_URLS = {
@@ -95,11 +96,11 @@ function isBasePaymasterEnabled() {
 }
 
 function isLegacyWalletEnabled() {
-  return process.env.USE_LEGACY_WALLET === "1" || process.env.USE_LEGACY_WALLET === "true";
+  return walletPolicy.isLegacyWalletEnabled();
 }
 
 function isLegacyWalletData(walletData) {
-  return Boolean(walletData && (walletData.walletId || walletData.seed));
+  return walletPolicy.isLegacyWalletData(walletData);
 }
 
 /**
@@ -181,16 +182,7 @@ function validateEnvironment() {
  * @returns {object|undefined}
  */
 function loadWalletData() {
-  if (!fs.existsSync(WALLET_DATA_PATH)) {
-    return undefined;
-  }
-
-  const raw = fs.readFileSync(WALLET_DATA_PATH, "utf8");
-  if (!raw.trim()) {
-    return undefined;
-  }
-
-  return JSON.parse(raw);
+  return walletPolicy.loadWalletData();
 }
 
 /**
@@ -269,19 +261,26 @@ async function createWalletProvider(credentials, existingWalletData) {
   const { apiKeyId, apiKeySecretLegacy, apiKeySecretV2, walletSecret } = credentials;
 
   if (isLegacyWalletEnabled()) {
+    if (!isLegacyWalletData(existingWalletData) && !process.env.MNEMONIC_PHRASE?.trim()) {
+      walletPolicy.refuseNewWalletCreation("legacy wallet bootstrap");
+    }
+
     const walletProvider = await LegacyCdpWalletProvider.configureWithWallet({
       apiKeyId,
       apiKeySecret: apiKeySecretLegacy,
       networkId: NETWORK_ID,
       ...(isLegacyWalletData(existingWalletData)
         ? { cdpWalletData: JSON.stringify(existingWalletData) }
-        : {}),
+        : { mnemonicPhrase: process.env.MNEMONIC_PHRASE.trim() }),
     });
 
     return { walletProvider, walletMode: "legacy" };
   }
 
   if (isBasePaymasterEnabled()) {
+    if (!existingWalletData?.address && !existingWalletData?.ownerAddress) {
+      walletPolicy.refuseNewWalletCreation("smart wallet bootstrap");
+    }
     return createSmartWalletProvider(credentials, existingWalletData);
   }
 
@@ -308,28 +307,18 @@ async function createWalletProvider(credentials, existingWalletData) {
     return { walletProvider, walletMode: "legacy" };
   }
 
-  try {
-    const walletProvider = await CdpEvmWalletProvider.configureWithWallet({
+  if (process.env.MNEMONIC_PHRASE?.trim()) {
+    const walletProvider = await LegacyCdpWalletProvider.configureWithWallet({
       apiKeyId,
-      apiKeySecret: apiKeySecretV2,
-      walletSecret,
+      apiKeySecret: apiKeySecretLegacy,
       networkId: NETWORK_ID,
+      mnemonicPhrase: process.env.MNEMONIC_PHRASE.trim(),
     });
 
-    return { walletProvider, walletMode: "v2" };
-  } catch (error) {
-    console.warn(
-      `CDP v2 wallet initialization failed (${error instanceof Error ? error.message : error}). Trying legacy wallet...`,
-    );
+    return { walletProvider, walletMode: "legacy" };
   }
 
-  const walletProvider = await LegacyCdpWalletProvider.configureWithWallet({
-    apiKeyId,
-    apiKeySecret: apiKeySecretLegacy,
-    networkId: NETWORK_ID,
-  });
-
-  return { walletProvider, walletMode: "legacy" };
+  walletPolicy.refuseNewWalletCreation("CDP v2 or legacy bootstrap");
 }
 
 /**
@@ -639,7 +628,7 @@ async function runDsaCommand(command) {
 async function initializeToolkit() {
   const credentials = resolveCdpCredentials();
   const existingWalletData = loadWalletData();
-  const walletCreated = !existingWalletData;
+  const walletCreated = !existingWalletData && !process.env.MNEMONIC_PHRASE?.trim();
 
   const { walletProvider, walletMode, paymasterUrl } = await createWalletProvider(
     credentials,

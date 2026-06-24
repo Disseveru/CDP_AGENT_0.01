@@ -83,6 +83,22 @@ async function main() {
     !/not authenticated/i.test(awalOut) &&
     (/signed in/i.test(awalOut) || /✓ authenticated/i.test(awalOut));
 
+  printSection("4. CDP wallet policy");
+  if (!process.env.USE_LEGACY_WALLET) {
+    process.env.USE_LEGACY_WALLET = "1";
+    console.log("Set USE_LEGACY_WALLET=1 for this session (reuse funded legacy wallet).");
+  }
+  if (!process.env.PAY_TO_ADDRESS) {
+    process.env.PAY_TO_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189";
+    console.log(`Default PAY_TO_ADDRESS=${process.env.PAY_TO_ADDRESS}`);
+  }
+  const audit = run(process.execPath, ["scripts/cdp-wallet-audit.mjs"]);
+  process.stdout.write(audit.stdout || "");
+  process.stderr.write(audit.stderr || "");
+  if (audit.status !== 0) {
+    console.warn("Wallet audit failed; run: node scripts/cdp-wallet-audit.mjs");
+  }
+
   if (walletReady) {
     console.log("Wallet ready. Discover services with:");
     console.log('  curl -sS "https://api.agentic.market/v1/services/"');

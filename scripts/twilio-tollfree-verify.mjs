@@ -8,7 +8,7 @@
  * Optional overrides:
  *   TFV_BUSINESS_NAME, TFV_BUSINESS_WEBSITE, TFV_NOTIFICATION_EMAIL
  *   TFV_CUSTOMER_PROFILE_SID, TFV_BUSINESS_TYPE (default SOLE_PROPRIETOR)
- *   TFV_OPT_IN_URL (default PUBLIC_URL/operator-sms-consent)
+ *   TFV_OPT_IN_URL (default GitHub Pages operator consent HTML)
  *
  * Usage:
  *   TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=+18... \
@@ -25,6 +25,9 @@ const DEFAULTS = {
   operatorEmail: "er2k18@gmail.com",
   businessName: "AgentWire",
   messageVolume: "10",
+  optInUrl:
+    process.env.TFV_OPT_IN_URL?.trim() ||
+    "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html",
 };
 
 const { values: args } = parseArgs({
@@ -105,7 +108,7 @@ async function findPhoneNumberSid(accountSid, authToken, e164) {
 
 function buildVerificationPayload(phoneSid) {
   const publicUrl = (process.env.PUBLIC_URL || DEFAULTS.publicUrl).replace(/\/$/, "");
-  const optInUrl = process.env.TFV_OPT_IN_URL?.trim() || `${publicUrl}/operator-sms-consent`;
+  const optInUrl = process.env.TFV_OPT_IN_URL?.trim() || DEFAULTS.optInUrl;
   const sampleMessage = `⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: ${publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`;
 
   const payload = {

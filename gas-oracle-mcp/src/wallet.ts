@@ -15,6 +15,9 @@ import { isAddress } from "viem";
 
 import { CONFIG } from "./config.js";
 
+/** Funded legacy wallet — keep as the sole CDP identity for AgentWire. */
+const CANONICAL_LEGACY_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WALLET_DATA_PATH = path.join(__dirname, "..", "wallet_data.json");
 
@@ -266,9 +269,20 @@ export interface OracleIdentity {
  * `agentKit` is returned as `null`.
  */
 export async function initializeOracleIdentity(): Promise<OracleIdentity> {
-  if (CONFIG.payToOverride) {
-    console.log(`[wallet] Using fixed PAY_TO_ADDRESS: ${CONFIG.payToOverride}`);
-    return { agentKit: null, address: CONFIG.payToOverride };
+  const payTo =
+    CONFIG.payToOverride ||
+    (process.env.ALLOW_NEW_CDP_WALLET === "1" ? undefined : CANONICAL_LEGACY_ADDRESS);
+
+  if (payTo) {
+    console.log(`[wallet] Using fixed pay-to address: ${payTo}`);
+    return { agentKit: null, address: payTo };
+  }
+
+  const persisted = loadPersistedAddress();
+  if (!persisted) {
+    throw new Error(
+      `Refusing to create a new AgentWire CDP wallet. Set PAY_TO_ADDRESS=${CANONICAL_LEGACY_ADDRESS}, restore wallet_data.json, or set ALLOW_NEW_CDP_WALLET=1.`,
+    );
   }
 
   const credentials = resolveCdpCredentials();
