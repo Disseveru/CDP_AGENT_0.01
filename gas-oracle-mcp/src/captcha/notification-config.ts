@@ -174,21 +174,39 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
   };
 }
 
-/** Validate external URLs used in operator alerts before templating. */
-export function parseOperatorAlertUrls(input: {
-  solveUrl: string;
-  pageUrl: string;
-}): { solveUrl: string; pageUrl: string } {
-  const schema = z.object({
-    solveUrl: httpsUrlSchema,
-    pageUrl: httpsUrlSchema,
-  });
-  const parsed = schema.safeParse(input);
+const absoluteUrlSchema = z.string().trim().url();
+
+/** Validate the solve link (included in SMS) — must be https. */
+export function parseOperatorAlertSolveUrl(solveUrl: string): string {
+  const parsed = httpsUrlSchema.safeParse(solveUrl);
   if (!parsed.success) {
     throw new NotificationConfigError(
-      "Operator alert URLs are invalid",
+      "Operator alert solve URL is invalid",
       formatZodIssues(parsed.error),
     );
   }
   return parsed.data;
+}
+
+/** Validate the target page URL for display in email (http allowed; links only when https). */
+export function parseOperatorAlertPageUrl(pageUrl: string): string {
+  const parsed = absoluteUrlSchema.safeParse(pageUrl);
+  if (!parsed.success) {
+    throw new NotificationConfigError(
+      "Operator alert page URL is invalid",
+      formatZodIssues(parsed.error),
+    );
+  }
+  return parsed.data;
+}
+
+/** @deprecated Use parseOperatorAlertSolveUrl / parseOperatorAlertPageUrl. */
+export function parseOperatorAlertUrls(input: {
+  solveUrl: string;
+  pageUrl: string;
+}): { solveUrl: string; pageUrl: string } {
+  return {
+    solveUrl: parseOperatorAlertSolveUrl(input.solveUrl),
+    pageUrl: parseOperatorAlertPageUrl(input.pageUrl),
+  };
 }

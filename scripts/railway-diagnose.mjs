@@ -139,6 +139,40 @@ async function main() {
     console.log(summarizeCredential(key, vars[key]));
   }
 
+  console.log("");
+  console.log("CAPTCHA operator notifications:");
+  for (const key of [
+    "OPERATOR_SMS_NUMBER",
+    "OPERATOR_EMAIL",
+    "PUBLIC_URL",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_FROM_NUMBER",
+    "SMTP_USER",
+    "SMTP_PASS",
+  ]) {
+    if (/PASS|TOKEN|SID/i.test(key)) {
+      console.log(`${key}: ${vars[key] ? "set" : "missing"}`);
+      continue;
+    }
+    console.log(`${key}: ${vars[key] || "(unset)"}`);
+  }
+
+  const smtpPartial =
+    (vars.SMTP_USER && !vars.SMTP_PASS) || (!vars.SMTP_USER && vars.SMTP_PASS);
+  const twilioPartial = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"].filter(
+    (key) => Boolean(vars[key]),
+  );
+  if (smtpPartial) {
+    console.log("  → SMTP is partially configured; set both SMTP_USER and SMTP_PASS or remove both.");
+  }
+  if (twilioPartial.length > 0 && twilioPartial.length < 3) {
+    console.log("  → Twilio is partially configured; set all three TWILIO_* vars or remove all.");
+  }
+  if (!vars.TWILIO_ACCOUNT_SID) {
+    console.log("  → SMS alerts disabled until Twilio secrets are set.");
+  }
+
   const tsxPath = join(repoRoot, "gas-oracle-mcp", "node_modules", ".bin", "tsx");
   const diag = spawnSync(
     tsxPath,

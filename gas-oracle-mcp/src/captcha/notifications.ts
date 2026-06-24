@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { CONFIG } from "../config.js";
 import { renderOperatorAlertEmail } from "./email-template.js";
-import { parseOperatorAlertUrls } from "./notification-config.js";
+import {
+  parseOperatorAlertPageUrl,
+  parseOperatorAlertSolveUrl,
+} from "./notification-config.js";
 import type { CaptchaType, SanitizedOperatorAlert } from "./types.js";
 
 export interface OperatorAlert {
@@ -33,16 +36,11 @@ function sanitizeOperatorAlert(alert: OperatorAlert): SanitizedOperatorAlert {
     throw new Error(`Invalid operator alert: ${detail}`);
   }
 
-  const urls = parseOperatorAlertUrls({
-    solveUrl: parsed.data.solveUrl,
-    pageUrl: parsed.data.pageUrl,
-  });
-
   return {
     taskId: parsed.data.taskId,
-    solveUrl: urls.solveUrl,
+    solveUrl: parseOperatorAlertSolveUrl(parsed.data.solveUrl),
     captchaType: parsed.data.captchaType,
-    pageUrl: urls.pageUrl,
+    pageUrl: parseOperatorAlertPageUrl(parsed.data.pageUrl),
   };
 }
 
