@@ -104,6 +104,16 @@ test("parseNotificationSettings validates complete Twilio configuration", () => 
   assert.equal(settings.sms.fromNumber, "+15551234567");
 });
 
+test("parseNotificationSettings allows operator email without SMTP credentials", () => {
+  const settings = parseNotificationSettings({
+    OPERATOR_EMAIL: "ops@example.com",
+    SMTP_HOST: "smtp.gmail.com",
+    SMTP_PORT: "587",
+  });
+  assert.equal(settings.operatorEmail, "ops@example.com");
+  assert.equal(settings.email, null);
+});
+
 test("parseNotificationSettings rejects partial SMTP configuration", () => {
   assert.throws(
     () =>

@@ -38,7 +38,6 @@ const STATIC_VARIABLES = [
   ["OPERATOR_EMAIL", DEFAULTS.operatorEmail],
   ["SMTP_HOST", "smtp.gmail.com"],
   ["SMTP_PORT", "587"],
-  ["SMTP_USER", DEFAULTS.operatorEmail],
   ["PRICE_CAPTCHA_SUBMIT", "$0.050"],
   ["PRICE_CAPTCHA_BYPASS", "$0.075"],
   ["CAPTCHA_TASK_TTL_SEC", "3600"],
@@ -51,7 +50,12 @@ const SECRET_ENV_MAP = [
   ["TWILIO_ACCOUNT_SID", "TWILIO_ACCOUNT_SID"],
   ["TWILIO_AUTH_TOKEN", "TWILIO_AUTH_TOKEN"],
   ["TWILIO_FROM_NUMBER", "TWILIO_FROM_NUMBER"],
+];
+
+/** SMTP auth vars must be written together — partial SMTP_USER alone crashes boot. */
+const SMTP_SECRET_ENV = [
   ["SMTP_PASS", "SMTP_PASS"],
+  ["SMTP_USER", DEFAULTS.operatorEmail],
 ];
 
 async function gql(token, query, variables) {
@@ -127,6 +131,16 @@ async function main() {
     } else {
       missingSecrets.push(railwayName);
     }
+  }
+
+  const smtpPass = process.env.SMTP_PASS?.trim();
+  if (smtpPass) {
+    for (const [railwayName, value] of SMTP_SECRET_ENV) {
+      const resolved = railwayName === "SMTP_PASS" ? smtpPass : value;
+      await upsertVariable(token, railwayName, resolved);
+    }
+  } else {
+    missingSecrets.push("SMTP_PASS (and SMTP_USER — set together to avoid boot crash)");
   }
 
   if (missingSecrets.length) {
