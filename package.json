@@ -18,13 +18,15 @@
     "dsa:accounts": "node scripts/dsa-cast.js accounts",
     "dsa:build-chains": "node scripts/dsa-cast.js build-chains",
     "dsa:recipes": "node scripts/dsa-cast.js recipes",
+    "dsa:deploy-flash": "node scripts/deploy-flash-contracts.js",
+    "dsa:build-avocado-batch": "node scripts/build-avocado-arbitrage-batch.js",
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
     "railway:provision-notifications": "node scripts/railway-provision-notifications.mjs",
     "ci": "node scripts/ci.mjs",
-    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs"
+    "test": "node --test index.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs contracts/compoundLiquidator.repay.test.mjs"
   },
   "repository": {
     "type": "git",
@@ -72,5 +74,8 @@
     "tar": "^7.4.3",
     "tough-cookie": "^4.1.4",
     "uuid": "^11.1.1"
+  },
+  "devDependencies": {
+    "solc": "^0.8.26"
   }
 }
