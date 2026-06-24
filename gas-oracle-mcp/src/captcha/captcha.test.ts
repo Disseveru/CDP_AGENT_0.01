@@ -130,7 +130,7 @@ test("parseNotificationSettings validates complete SMTP configuration", () => {
   assert.equal(settings.email.port, 587);
 });
 
-test("parseOperatorAlertUrls rejects non-https URLs", () => {
+test("parseOperatorAlertUrls rejects non-https solve URLs", () => {
   assert.throws(
     () =>
       parseOperatorAlertUrls({
@@ -142,6 +142,24 @@ test("parseOperatorAlertUrls rejects non-https URLs", () => {
       return true;
     },
   );
+});
+
+test("parseOperatorAlertUrls accepts http page URLs", () => {
+  const urls = parseOperatorAlertUrls({
+    solveUrl: "https://example.com/solve/task-123",
+    pageUrl: "http://example.com/login",
+  });
+  assert.equal(urls.solveUrl, "https://example.com/solve/task-123");
+  assert.equal(urls.pageUrl, "http://example.com/login");
+});
+
+test("buildSmsBody accepts http page URLs from captcha submit", () => {
+  const body = buildSmsBody({
+    ...baseAlert,
+    pageUrl: "http://example.com/login",
+  });
+  assert.match(body, /550e8400-e29b-41d4-a716-446655440000/);
+  assert.match(body, /Solve here: https:\/\//);
 });
 
 test("buildSmsBody includes sanitized task id and solve URL", () => {

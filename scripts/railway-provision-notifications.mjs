@@ -36,14 +36,18 @@ const STATIC_VARIABLES = [
   ["PUBLIC_URL", DEFAULTS.publicUrl],
   ["OPERATOR_SMS_NUMBER", DEFAULTS.operatorSmsNumber],
   ["OPERATOR_EMAIL", DEFAULTS.operatorEmail],
-  ["SMTP_HOST", "smtp.gmail.com"],
-  ["SMTP_PORT", "587"],
-  ["SMTP_USER", DEFAULTS.operatorEmail],
   ["PRICE_CAPTCHA_SUBMIT", "$0.050"],
   ["PRICE_CAPTCHA_BYPASS", "$0.075"],
   ["CAPTCHA_TASK_TTL_SEC", "3600"],
   ["CAPTCHA_POLL_TIMEOUT_MS", "300000"],
   ["CAPTCHA_POLL_INTERVAL_MS", "2000"],
+];
+
+/** SMTP vars are applied only when SMTP_PASS is available (strict boot validation). */
+const SMTP_VARIABLES = [
+  ["SMTP_HOST", "smtp.gmail.com"],
+  ["SMTP_PORT", "587"],
+  ["SMTP_USER", DEFAULTS.operatorEmail],
 ];
 
 /** Secrets pulled from the provisioner's environment when present. */
@@ -119,10 +123,19 @@ async function main() {
     await upsertVariable(token, name, value);
   }
 
+  const smtpPass = process.env.SMTP_PASS?.trim();
+  if (smtpPass) {
+    for (const [name, value] of SMTP_VARIABLES) {
+      await upsertVariable(token, name, value);
+    }
+    await upsertVariable(token, "SMTP_PASS", smtpPass);
+  }
+
   const missingSecrets = [];
   for (const [railwayName, envName] of SECRET_ENV_MAP) {
     const value = process.env[envName]?.trim();
     if (value) {
+      if (railwayName === "SMTP_PASS") continue;
       await upsertVariable(token, railwayName, value);
     } else {
       missingSecrets.push(railwayName);
