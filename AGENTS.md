@@ -145,6 +145,7 @@ After setup: restart Cursor → **Settings → MCP** → enable **gas-oracle-mcp
 | `POST /api/v1/captcha/submit` | x402-paid task submission (402 + `PAYMENT-REQUIRED` header when unpaid) |
 | `GET /api/v1/captcha/status?task_id=` | Agent polls for `solution_token` when `status=completed` |
 | `GET /solve/{task_id}` | Mobile solve page for the operator (SMS/email link target) |
+| `GET /operator-sms-consent` | Public operator SMS opt-in disclosure (Twilio toll-free verification) |
 | `POST /api/v1/captcha/solve/{task_id}` | Operator submits `solution_token` from the solve page |
 
 MCP tool `request_human_captcha_bypass` runs the full lifecycle: queue task → SMS/email operator → block until solved → return token.

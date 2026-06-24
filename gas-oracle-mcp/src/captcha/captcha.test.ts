@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { renderOperatorAlertEmail } from "./email-template.js";
+import { renderOperatorSmsConsentPage } from "./operator-sms-consent-page.js";
 import { buildEmailHtml, buildEmailSubject, buildSmsBody } from "./notifications.js";
 import {
   NotificationConfigError,
@@ -183,6 +184,22 @@ test("renderOperatorAlertEmail uses https links only", () => {
 
   const solveHref = extractFirstMatch(html, /href="(https:\/\/example\.com\/solve\/task-123)"/);
   assert.equal(solveHref, "https://example.com/solve/task-123");
+});
+
+test("renderOperatorSmsConsentPage documents operator opt-in for Twilio verification", () => {
+  const html = renderOperatorSmsConsentPage({
+    serviceName: "AgentWire",
+    publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
+    operatorSmsNumber: "+17472241814",
+    operatorEmail: "er2k18@gmail.com",
+  });
+
+  assert.match(html, /<title>AgentWire — Operator SMS consent<\/title>/);
+  assert.match(html, /OPERATOR_SMS_NUMBER/);
+  assert.match(html, /\+17472241814/);
+  assert.match(html, /Reply <strong>STOP<\/strong> to unsubscribe/);
+  assert.match(html, /CAPTCHA Alert: Agent task/);
+  assert.doesNotMatch(html, /<script>/);
 });
 
 test("renderSolvePage injects task id and solve endpoint safely", () => {

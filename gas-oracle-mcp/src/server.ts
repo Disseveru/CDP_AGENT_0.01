@@ -34,6 +34,7 @@ import {
 } from "./captcha/tasks.js";
 import { getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
+import { renderOperatorSmsConsentPage } from "./captcha/operator-sms-consent-page.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
@@ -976,6 +977,18 @@ async function main(): Promise<void> {
     res.type("html").send(renderSolvePage(task));
   });
 
+  app.get("/operator-sms-consent", (_req, res) => {
+    const { notifications } = CONFIG.captcha;
+    res.type("html").send(
+      renderOperatorSmsConsentPage({
+        serviceName: CONFIG.serviceName,
+        publicUrl: CONFIG.publicUrl,
+        operatorSmsNumber: notifications.operatorSmsNumber,
+        operatorEmail: notifications.operatorEmail,
+      }),
+    );
+  });
+
   app.post("/api/v1/captcha/solve/:taskId", async (req, res) => {
     const solutionToken =
       typeof req.body?.solution_token === "string" ? req.body.solution_token.trim() : "";
@@ -1037,6 +1050,7 @@ async function main(): Promise<void> {
     console.log(`[boot] Webhook pattern:  ${CONFIG.publicUrl}/hooks/{inboxId}`);
     console.log(`[boot] CAPTCHA submit:   ${CONFIG.publicUrl}/api/v1/captcha/submit`);
     console.log(`[boot] CAPTCHA solve:    ${CONFIG.publicUrl}/solve/{task_id}`);
+    console.log(`[boot] SMS consent page: ${CONFIG.publicUrl}/operator-sms-consent`);
     if (CONFIG.mcpApiKey) {
       console.log("[boot] MCP API key auth enabled for /mcp, /sse, and /messages");
     }
