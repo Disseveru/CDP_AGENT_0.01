@@ -176,6 +176,7 @@ async function deployViaCreate2(walletProvider, saltLabel, initBytecode, dryRun,
         },
       ],
       chainId,
+      { safeAddress },
     );
 
     const deployedCode = await publicClient.getBytecode({ address: predicted });
@@ -282,7 +283,7 @@ async function deployChain(chainId, dryRun, broadcaster) {
 
   const receiverResult = await deployViaCreate2(
     walletProvider,
-    `FlashLoanReceiver-${chainId}-v2`,
+    `FlashLoanReceiver-${chainId}-v4`,
     receiverInit,
     dryRun,
     broadcaster,
@@ -291,7 +292,7 @@ async function deployChain(chainId, dryRun, broadcaster) {
 
   const liquidatorResult = await deployViaCreate2(
     walletProvider,
-    `CompoundLiquidator-${chainId}-v2`,
+    `CompoundLiquidator-${chainId}-v3`,
     liquidatorInit,
     dryRun,
     broadcaster,

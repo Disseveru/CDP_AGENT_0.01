@@ -4,11 +4,11 @@
     "aggregator": "0x3813f7a28814bfaf861192d0a5a4891b15698bac",
     "paymasterUrl": "https://api.cdp.coinbase.com/rpc/v1/base/jEben79GPU30p383jcfnwLdD0qCFYfhS",
     "deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
-    "smartWallet": "0xdc1975FBc02Be70ec55565B2d2ecd9A5B6A526d3",
+    "smartWallet": "0x0936D82CE6E25FEBb1B1B87a04d4F7dCCa9d6e40",
     "broadcaster": "cdp",
-    "owner": "0x3c3CfA1dD813e4469DD5FD6662bc858AaA40E531",
+    "owner": "0xA4cB8C4Ac2249c3F960055BD55CFe1da775699D0",
     "flashLoanReceiver": {
-      "address": "0x917b315ff0b40d87968dd340b346a39bfecf239d",
+      "address": "0x7f75dce8abc61b206fa8842ca036982f5c6895d6",
       "abi": [
         {
           "inputs": [
@@ -200,16 +200,16 @@
           "type": "function"
         }
       ],
-      "userOpHash": "0x5a79aa3795edd5cfdd137e6a8747ed9b320c627fc71f429e91ce541a48cdd403",
-      "transactionHash": "0x3c7baffd42c63f721f9c900a16efff0336a72b7b4201788de0fcaf2a0ab4d309",
+      "userOpHash": "0x5586e63f97a3652b6bffba91509550f3a66700230f4a8908c44074929920c95e",
+      "transactionHash": "0x50363e074e5906873e670e9b3576ee75d9ce0aba3ace0359e1e90c68bf604173",
       "status": "complete",
-      "deployed": false,
-      "salt": "0xafb5a4f038ec5dfbad5537698329017d0186e284b9eaf9ec9bc27f73bb843642",
-      "smartWallet": "0xdc1975FBc02Be70ec55565B2d2ecd9A5B6A526d3",
+      "deployed": true,
+      "salt": "0x05818c1ed6e69fd9f8275f5740d20075b6a92aa5b52bccb9ad6444c208fb7adc",
+      "smartWallet": "0x0936D82CE6E25FEBb1B1B87a04d4F7dCCa9d6e40",
       "broadcaster": "cdp"
     },
     "compoundLiquidator": {
-      "address": "0x78183fcc0a45eb0c464380bc170d1693bfb0a19f",
+      "address": "0x0e2d8b9207158f2911a6f8433e367bd59fa7b711",
       "abi": [
         {
           "inputs": [
@@ -428,14 +428,14 @@
           "type": "function"
         }
       ],
-      "userOpHash": "0x5ccc207b42bda244bfe2471a6bc1804de47cdb4081b42161ab36c0e5a756f9ad",
-      "transactionHash": "0xbd909c551f3ee77f56484f86edf2d92ee8c8ccd200b766d7fd686e8c636fb79c",
+      "userOpHash": "0xa41cd10319dd7e0918253419338788f199f4ffc0ecaddef1413b1009aca718b0",
+      "transactionHash": "0x74f06f8ca1ff8f35f869d41c8a29cb2f39d41e2aa62a107e1c9454c07ca3f543",
       "status": "complete",
-      "deployed": false,
-      "salt": "0x54e9c4abd38427f5e74b50f46a4df0427b626c718652d46ad9f9679307456398",
-      "smartWallet": "0xdc1975FBc02Be70ec55565B2d2ecd9A5B6A526d3",
+      "deployed": true,
+      "salt": "0xf34cbbcc650bd0ba1cb12994ed62091f51a9205b859c0eb5fd9cd73523dd930a",
+      "smartWallet": "0x0936D82CE6E25FEBb1B1B87a04d4F7dCCa9d6e40",
       "broadcaster": "cdp"
     }
   },
-  "updatedAt": "2026-06-24T02:15:52.950Z"
+  "updatedAt": "2026-06-24T03:56:51.856Z"
 }
