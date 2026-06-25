@@ -105,6 +105,16 @@ test("parseNotificationSettings validates complete Twilio configuration", () => 
   assert.equal(settings.sms.fromNumber, "+15551234567");
 });
 
+test("parseNotificationSettings normalizes Twilio from numbers missing a leading plus", () => {
+  const settings = parseNotificationSettings({
+    TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    TWILIO_AUTH_TOKEN: "0123456789abcdef",
+    TWILIO_FROM_NUMBER: "18445551234",
+  });
+  assert.ok(settings.sms);
+  assert.equal(settings.sms.fromNumber, "+18445551234");
+});
+
 test("parseNotificationSettings rejects partial SMTP configuration", () => {
   assert.throws(
     () =>
