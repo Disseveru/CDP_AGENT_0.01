@@ -13,6 +13,36 @@
 
 Paid external capabilities should go through Agentic Market discovery (`https://api.agentic.market/v1/services/`) and `npx awal x402 pay <url>` unless the task is specifically about this repo's AgentWire MCP server.
 
+## Persistent Composer 2.5 Cloud Agents
+
+Use **Cursor Cloud Agents** so Composer 2.5 can work on this repo without you manually spinning up the environment each time.
+
+### One-time dashboard setup
+
+1. **GitHub** — [cursor.com/dashboard/integrations](https://cursor.com/dashboard/integrations) → connect **Disseveru/CDP_AGENT_0.01** with read/write.
+2. **Secrets** — [cursor.com/dashboard/cloud-agents](https://cursor.com/dashboard/cloud-agents) → **Secrets**. Add at least:
+   - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`
+   - `RAILWAY_TOKEN` (Railway read/diagnose)
+   - `GAS_ORACLE_MCP_URL` = `https://gas-oracle-mcp-production.up.railway.app`
+   - `GAS_ORACLE_MCP_API_KEY` (Railway → gas-oracle-mcp → `MCP_API_KEY`)
+3. **Environment** — dashboard → **Environments** → select this repo. The committed `.cursor/environment.json` runs `npm install`, installs AgentWire with `--legacy-peer-deps`, and builds it on every boot.
+4. **Model** — Agents window → **Cloud** → model picker → **Composer 2.5** (use **standard**, not fast, for long autonomous tasks). Set the same default under dashboard **Cloud Agents → My Settings** so you do not pick it every run.
+5. **MCP (cloud)** — [cursor.com/agents](https://cursor.com/agents) → MCP → enable servers from `.cursor/mcp.json` (AgentWire SSE + Railway). Map secret env vars in the dashboard; cloud VMs do not read local `~/.cursor/mcp.json`.
+6. **Snapshot (optional, faster boots)** — run one guided cloud agent (`npm run bootstrap:agent && npm run ci`), save the VM snapshot in the dashboard, then set `"snapshot": "<id>"` in `.cursor/environment.json`.
+
+### Autonomous / recurring runs
+
+| Goal | How |
+|---|---|
+| Ad-hoc task | [cursor.com/agents](https://cursor.com/agents) or desktop **Cloud** agent → describe the task → agent opens a PR |
+| GitHub trigger | Comment `@cursor <instruction>` on a PR or issue |
+| Scheduled / event-driven | [cursor.com/automations](https://cursor.com/automations) → trigger (cron, push, PR opened) → model **Composer 2.5** → repo + environment → prompt |
+| API / durable agent | `POST https://api.cursor.com/v1/agents` with `"model": { "id": "composer-2.5", "params": [{ "id": "fast", "value": "false" }] }` |
+
+Example automation prompt: *Pull latest `main`, run `npm run bootstrap:agent && npm run ci`, fix failures, and open a PR.*
+
+Cloud VMs are ephemeral per run; persistence comes from the saved environment recipe, dashboard secrets, git branches/PRs, and Automations—not from a always-on machine.
+
 ## Cursor Cloud specific instructions
 
 ### Project overview
