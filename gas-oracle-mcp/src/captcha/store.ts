@@ -44,6 +44,14 @@ export async function getCaptchaTask(taskId: string): Promise<CaptchaTask | null
   return raw ? (JSON.parse(raw) as CaptchaTask) : null;
 }
 
+export async function deleteCaptchaTask(taskId: string): Promise<void> {
+  if (!isRedisEnabled()) return;
+  const redis = getRedis();
+  if (!redis) return;
+  if (redis.status !== "ready") await redis.connect();
+  await redis.del(taskKey(taskId));
+}
+
 export function captchaSolveUrl(taskId: string, solveToken: string): string {
   const token = encodeURIComponent(solveToken);
   return `${CONFIG.publicUrl}/solve/${taskId}?token=${token}`;

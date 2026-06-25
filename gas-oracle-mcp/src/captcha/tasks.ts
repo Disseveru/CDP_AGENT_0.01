@@ -27,7 +27,7 @@ export function parseSubmitBody(body: unknown): CaptchaSubmitInput {
 
 export async function createCaptchaTask(
   input: CaptchaSubmitInput,
-  options?: { paymentTx?: string },
+  options?: { notify?: boolean; paymentTx?: string },
 ): Promise<CaptchaSubmitResult> {
   await assertCaptchaStorageReady();
 
@@ -49,16 +49,20 @@ export async function createCaptchaTask(
   await saveCaptchaTask(task);
 
   const solveUrl = captchaSolveUrl(taskId, solveToken);
-  void notifyOperator({
-    taskId,
-    solveUrl,
-    captchaType: input.captcha_type,
-    pageUrl: input.pageurl,
-  }).catch((error) => {
-    console.error("[captcha] Operator alert failed:", error);
-  });
+  const result = { task_id: taskId, status: "pending" as const, solve_url: solveUrl, poll_token: pollToken };
 
-  return { task_id: taskId, status: "pending", solve_url: solveUrl, poll_token: pollToken };
+  if (options?.notify !== false) {
+    void notifyOperator({
+      taskId,
+      solveUrl,
+      captchaType: input.captcha_type,
+      pageUrl: input.pageurl,
+    }).catch((error) => {
+      console.error("[captcha] Operator alert failed:", error);
+    });
+  }
+
+  return result;
 }
 
 export async function getCaptchaStatus(
