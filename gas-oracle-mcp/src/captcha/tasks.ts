@@ -25,6 +25,14 @@ export function parseSubmitBody(body: unknown): CaptchaSubmitInput {
   return submitBodySchema.parse(body);
 }
 
+/** Roll back only when settlement failed with no on-chain transaction (no payment captured). */
+export function shouldDeleteCaptchaTaskAfterSettlementFailure(settlement: {
+  success: boolean;
+  transaction?: string;
+}): boolean {
+  return !settlement.success && !settlement.transaction?.trim();
+}
+
 export async function createCaptchaTask(
   input: CaptchaSubmitInput,
   options?: { notify?: boolean; paymentTx?: string },

@@ -29,6 +29,7 @@ import {
   createCaptchaTask,
   getCaptchaStatus,
   parseSubmitBody,
+  shouldDeleteCaptchaTaskAfterSettlementFailure,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
 import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
@@ -587,9 +588,23 @@ async function handleCaptchaSubmitRequest(
   );
 
   if (!settlement.success) {
-    await deleteCaptchaTask(created.task_id).catch((error) => {
-      console.error("[captcha] Failed to roll back task after settlement failure:", error);
-    });
+    if (shouldDeleteCaptchaTaskAfterSettlementFailure(settlement)) {
+      await deleteCaptchaTask(created.task_id).catch((error) => {
+        console.error("[captcha] Failed to roll back task after settlement failure:", error);
+      });
+    } else {
+      console.error(
+        `[captcha] Settlement failed for task ${created.task_id} but transaction ${settlement.transaction} is present; retaining task`,
+      );
+      void notifyOperator({
+        taskId: created.task_id,
+        solveUrl: created.solve_url,
+        captchaType: input.captcha_type,
+        pageUrl: input.pageurl,
+      }).catch((error) => {
+        console.error("[captcha] Operator alert failed after ambiguous settlement:", error);
+      });
+    }
     writeHttpInstructions(res, settlement.response);
     return;
   }

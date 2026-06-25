@@ -13,7 +13,7 @@ import {
 } from "./notification-config.js";
 import { renderSolvePage } from "./solve-page.js";
 import { isCaptchaStorageConfigured } from "./store.js";
-import { captchaWidgetScript, submitBodySchema } from "./tasks.js";
+import { captchaWidgetScript, submitBodySchema, shouldDeleteCaptchaTaskAfterSettlementFailure } from "./tasks.js";
 import { safeCompareSecret } from "./tokens.js";
 import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
@@ -73,6 +73,25 @@ test("submitBodySchema validates captcha submit payload", () => {
     captcha_type: "turnstile",
   });
   assert.equal(parsed.captcha_type, "turnstile");
+});
+
+test("shouldDeleteCaptchaTaskAfterSettlementFailure rolls back only without a transaction", () => {
+  assert.equal(
+    shouldDeleteCaptchaTaskAfterSettlementFailure({ success: false, transaction: "" }),
+    true,
+  );
+  assert.equal(
+    shouldDeleteCaptchaTaskAfterSettlementFailure({ success: false }),
+    true,
+  );
+  assert.equal(
+    shouldDeleteCaptchaTaskAfterSettlementFailure({
+      success: false,
+      transaction: "0xabc123",
+    }),
+    false,
+  );
+  assert.equal(shouldDeleteCaptchaTaskAfterSettlementFailure({ success: true, transaction: "" }), false);
 });
 
 test("parseNotificationSettings allows fully disabled channels", () => {
