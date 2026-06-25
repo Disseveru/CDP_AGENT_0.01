@@ -1,0 +1,5 @@
+{
+  "install": "npm install && npm --prefix gas-oracle-mcp install --legacy-peer-deps && npm --prefix gas-oracle-mcp run build",
+  "start": "",
+  "terminals": []
+}
