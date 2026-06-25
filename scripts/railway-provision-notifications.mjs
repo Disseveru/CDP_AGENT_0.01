@@ -108,6 +108,12 @@ async function redeployMcp(token) {
   console.log("Triggered MCP redeploy.");
 }
 
+function normalizeE164(value) {
+  const trimmed = value?.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
+}
+
 async function main() {
   const token = process.env.RAILWAY_TOKEN?.trim();
   if (!token) {
@@ -136,7 +142,8 @@ async function main() {
     if (railwayName === "SMTP_PASS") continue;
     const value = process.env[envName]?.trim();
     if (value) {
-      await upsertVariable(token, railwayName, value);
+      const normalized = railwayName === "TWILIO_FROM_NUMBER" ? normalizeE164(value) : value;
+      await upsertVariable(token, railwayName, normalized);
     } else {
       missingSecrets.push(railwayName);
     }
