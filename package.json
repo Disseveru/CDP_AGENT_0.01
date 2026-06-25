@@ -25,6 +25,7 @@
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
     "railway:provision-notifications": "node scripts/railway-provision-notifications.mjs",
+    "railway:staged-fix": "node scripts/railway-staged-fix.mjs",
     "captcha:setup": "node scripts/captcha-hitl-setup.mjs",
     "twilio:tollfree-verify": "node scripts/twilio-tollfree-verify.mjs",
     "cdp:wallet-audit": "node scripts/cdp-wallet-audit.mjs",
