@@ -29,6 +29,7 @@
     "twilio:tollfree-verify": "node scripts/twilio-tollfree-verify.mjs",
     "cdp:wallet-audit": "node scripts/cdp-wallet-audit.mjs",
     "dsa:wallet-audit": "node scripts/dsa-avocado-wallet-audit.mjs",
+    "avocado:remove-signers": "node scripts/avocado-remove-multisig-signers.mjs",
     "ci": "node scripts/ci.mjs",
     "test": "node --test index.test.js lib/cdp/wallet-policy.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs"
   },
