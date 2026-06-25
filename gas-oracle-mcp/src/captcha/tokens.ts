@@ -5,7 +5,10 @@ export function generateCaptchaSecret(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-export function safeCompareSecret(provided: string, expected: string): boolean {
+export function safeCompareSecret(provided: string, expected: string | undefined): boolean {
+  if (!provided || !expected) {
+    return false;
+  }
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
   if (a.length !== b.length) {
