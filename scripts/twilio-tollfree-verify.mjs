@@ -154,7 +154,7 @@ async function main() {
   console.log("");
 
   const verifications = await listVerifications(accountSid, authToken);
-  const records = verifications.tollfree_verifications || [];
+  const records = verifications.verifications || verifications.tollfree_verifications || [];
   if (records.length) {
     console.log("Existing verifications:");
     for (const record of records) {
