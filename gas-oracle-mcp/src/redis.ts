@@ -54,6 +54,10 @@ export async function allowRateLimitedRequest(
 ): Promise<boolean> {
   const redis = getRedis();
   if (!redis) {
+    if (process.env.RAILWAY_ENVIRONMENT === "production") {
+      console.warn(`[redis] Rate limit unavailable in production (${category}), denying request`);
+      return false;
+    }
     return true;
   }
 
