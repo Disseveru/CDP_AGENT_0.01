@@ -7,7 +7,6 @@
  *
  * Revenue lands in the CDP AgentKit wallet initialized at boot.
  */
-import crypto from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -35,6 +34,7 @@ import {
 import { getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
 import { renderOperatorSmsConsentPage } from "./captcha/operator-sms-consent-page.js";
+import { safeCompareSecret } from "./captcha/tokens.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
@@ -747,16 +747,6 @@ function buildMcpServer(state: RuntimeState): McpServer {
 /** Active SSE sessions keyed by sessionId (Cursor IDE and other HTTP+SSE clients). */
 const sseTransports = new Map<string, SSEServerTransport>();
 
-function safeCompareSecret(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) {
-    crypto.timingSafeEqual(a, a);
-    return false;
-  }
-  return crypto.timingSafeEqual(a, b);
-}
-
 function isAuthorizedMcpRequest(req: Request): boolean {
   if (!CONFIG.mcpApiKey) {
     return process.env.RAILWAY_ENVIRONMENT !== "production";
@@ -967,12 +957,10 @@ async function main(): Promise<void> {
     handleCaptchaSubmitRequest(req, res, state).catch(next);
   });
 
+  // Status polling is authenticated via poll_token (256-bit secret). Do not apply
+  // the shared captcha IP rate limit here — at 2s intervals a 30/min cap blocks
+  // legitimate waits before CAPTCHA_POLL_TIMEOUT_MS (default 5 minutes).
   app.get("/api/v1/captcha/status", async (req, res) => {
-    if (!(await allowCaptchaRequest(req))) {
-      res.status(429).json({ error: "Rate limit exceeded" });
-      return;
-    }
-
     const taskId = req.query.task_id;
     const pollToken = req.query.poll_token;
     if (typeof taskId !== "string" || !taskId) {

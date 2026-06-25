@@ -14,6 +14,7 @@ import {
 import { renderSolvePage } from "./solve-page.js";
 import { isCaptchaStorageConfigured } from "./store.js";
 import { captchaWidgetScript, submitBodySchema } from "./tasks.js";
+import { safeCompareSecret } from "./tokens.js";
 import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
 
@@ -329,6 +330,14 @@ test("buildCaptchaSubmitRouteConfig passes Bazaar route validation", () => {
   const config = buildCaptchaSubmitRouteConfig("0x0000000000000000000000000000000000000001");
   assert.equal(config.resource?.includes("/api/v1/captcha/submit"), true);
   assert.ok(config.extensions?.bazaar);
+});
+
+test("safeCompareSecret rejects missing or empty secrets without throwing", () => {
+  const secret = "a".repeat(64);
+  assert.equal(safeCompareSecret(secret, secret), true);
+  assert.equal(safeCompareSecret(secret, undefined), false);
+  assert.equal(safeCompareSecret("", secret), false);
+  assert.equal(safeCompareSecret(secret, "wrong"), false);
 });
 
 test("isCaptchaStorageConfigured reflects REDIS_URL", () => {
