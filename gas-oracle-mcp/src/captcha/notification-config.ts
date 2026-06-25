@@ -76,6 +76,13 @@ function readEnv(env: EnvSource, key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** Twilio and Railway often store toll-free numbers without a leading +. */
+function normalizeE164(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
+}
+
 function formatZodIssues(error: z.ZodError): string[] {
   return error.issues.map((issue) => {
     const path = issue.path.length > 0 ? issue.path.join(".") : "value";
@@ -118,7 +125,7 @@ function parsePartialChannel<T>(
  * others missing) fails immediately so misconfiguration is caught at boot.
  */
 export function parseNotificationSettings(env: EnvSource = process.env): NotificationSettings {
-  const operatorSmsRaw = readEnv(env, "OPERATOR_SMS_NUMBER") ?? "+17472241814";
+  const operatorSmsRaw = normalizeE164(readEnv(env, "OPERATOR_SMS_NUMBER") ?? "+17472241814");
   const operatorSms = e164PhoneSchema.safeParse(operatorSmsRaw);
   if (!operatorSms.success) {
     throw new NotificationConfigError(
@@ -148,7 +155,7 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
     (source) => ({
       accountSid: readEnv(source, "TWILIO_ACCOUNT_SID"),
       authToken: readEnv(source, "TWILIO_AUTH_TOKEN"),
-      fromNumber: readEnv(source, "TWILIO_FROM_NUMBER"),
+      fromNumber: normalizeE164(readEnv(source, "TWILIO_FROM_NUMBER") ?? ""),
       apiBaseUrl: TWILIO_API_BASE_URL,
     }),
   );
