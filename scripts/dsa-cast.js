@@ -19,6 +19,7 @@ const {
   loadDsaState,
   parseSpellsInput,
   resolveDsaAuthorityAddress,
+  resolveEffectiveAuthorityAddress,
   resolveDsaChainId,
   saveDsaChainState,
   saveDsaState,
@@ -108,7 +109,7 @@ async function main() {
     return;
   }
 
-  const { dsa, web3, chainId, signerAddress } = createDsaClient();
+  const { dsa, web3, chainId, signerAddress, privateKey } = createDsaClient();
   const state = loadDsaState();
 
   if (command === "accounts") {
@@ -201,7 +202,13 @@ async function main() {
       throw new Error("Usage: node scripts/dsa-cast.js use <dsaId>");
     }
 
-    const authorityAddress = await resolveDsaAuthorityAddress();
+    const authorityAddress = await resolveEffectiveAuthorityAddress(chainId, { privateKey });
+    const accounts = await listDsaAccounts(dsa, authorityAddress);
+    const match = accounts.find((account) => account.id === dsaId);
+    if (!match) {
+      throw new Error(`DSA id ${dsaId} was not found for authority ${authorityAddress}.`);
+    }
+
     const instance = await dsa.setInstance(dsaId);
     saveDsaChainState(
       chainId,

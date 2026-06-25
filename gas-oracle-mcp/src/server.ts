@@ -31,7 +31,8 @@ import {
   parseSubmitBody,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
-import { getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
+import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
+import { notifyOperator } from "./captcha/notifications.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
 import { renderOperatorSmsConsentPage } from "./captcha/operator-sms-consent-page.js";
 import { safeCompareSecret } from "./captcha/tokens.js";
@@ -562,7 +563,7 @@ async function handleCaptchaSubmitRequest(
 
   let created;
   try {
-    created = await createCaptchaTask(input);
+    created = await createCaptchaTask(input, { notify: false });
   } catch (error) {
     console.error("[captcha] Task creation failed after payment verification:", error);
     res.status(503).json({
@@ -586,9 +587,21 @@ async function handleCaptchaSubmitRequest(
   );
 
   if (!settlement.success) {
+    await deleteCaptchaTask(created.task_id).catch((error) => {
+      console.error("[captcha] Failed to roll back task after settlement failure:", error);
+    });
     writeHttpInstructions(res, settlement.response);
     return;
   }
+
+  void notifyOperator({
+    taskId: created.task_id,
+    solveUrl: created.solve_url,
+    captchaType: input.captcha_type,
+    pageUrl: input.pageurl,
+  }).catch((error) => {
+    console.error("[captcha] Operator alert failed:", error);
+  });
 
   for (const [name, value] of Object.entries(settlement.headers)) {
     res.setHeader(name, value);
