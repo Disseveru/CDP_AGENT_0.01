@@ -21,8 +21,8 @@ const DEFAULTS = {
   environmentId: "5a065ed8-6c1b-4aa6-8968-7f5f3804c868",
   mcpServiceId: "0baa1261-4e18-4216-9377-e24e77655561",
   publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
-  operatorSmsNumber: "+17472241814",
-  operatorEmail: "er2k18@gmail.com",
+  operatorSmsNumber: process.env.OPERATOR_SMS_NUMBER?.trim(),
+  operatorEmail: process.env.OPERATOR_EMAIL?.trim(),
 };
 
 const { values: args } = parseArgs({
@@ -34,8 +34,6 @@ const { values: args } = parseArgs({
 /** Static config written on every provision run. */
 const STATIC_VARIABLES = [
   ["PUBLIC_URL", DEFAULTS.publicUrl],
-  ["OPERATOR_SMS_NUMBER", DEFAULTS.operatorSmsNumber],
-  ["OPERATOR_EMAIL", DEFAULTS.operatorEmail],
   ["PRICE_CAPTCHA_SUBMIT", "$0.050"],
   ["PRICE_CAPTCHA_BYPASS", "$0.075"],
   ["CAPTCHA_TASK_TTL_SEC", "3600"],
@@ -43,18 +41,32 @@ const STATIC_VARIABLES = [
   ["CAPTCHA_POLL_INTERVAL_MS", "2000"],
 ];
 
+if (DEFAULTS.operatorSmsNumber) {
+  STATIC_VARIABLES.push(["OPERATOR_SMS_NUMBER", normalizeE164(DEFAULTS.operatorSmsNumber)]);
+}
+if (DEFAULTS.operatorEmail) {
+  STATIC_VARIABLES.push(["OPERATOR_EMAIL", DEFAULTS.operatorEmail]);
+}
+
 /** Applied only when SMTP_PASS is present — avoids partial SMTP config that fails boot validation. */
-const SMTP_VARIABLES = [
-  ["SMTP_HOST", "smtp.gmail.com"],
-  ["SMTP_PORT", "587"],
-  ["SMTP_USER", DEFAULTS.operatorEmail],
-];
+const SMTP_VARIABLES = DEFAULTS.operatorEmail
+  ? [
+      ["SMTP_HOST", "smtp.gmail.com"],
+      ["SMTP_PORT", "587"],
+      ["SMTP_USER", DEFAULTS.operatorEmail],
+    ]
+  : [
+      ["SMTP_HOST", "smtp.gmail.com"],
+      ["SMTP_PORT", "587"],
+    ];
 
 /** Secrets pulled from the provisioner's environment when present. */
 const SECRET_ENV_MAP = [
   ["TWILIO_ACCOUNT_SID", "TWILIO_ACCOUNT_SID"],
   ["TWILIO_AUTH_TOKEN", "TWILIO_AUTH_TOKEN"],
   ["TWILIO_FROM_NUMBER", "TWILIO_FROM_NUMBER"],
+  ["OPERATOR_SMS_NUMBER", "OPERATOR_SMS_NUMBER"],
+  ["OPERATOR_EMAIL", "OPERATOR_EMAIL"],
   ["SMTP_PASS", "SMTP_PASS"],
 ];
 
@@ -111,7 +123,12 @@ async function redeployMcp(token) {
 function normalizeE164(value) {
   const trimmed = value?.trim();
   if (!trimmed) return trimmed;
-  return trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
+  let digits = trimmed.replace(/\D/g, "");
+  if (!digits) return trimmed;
+  if (digits.length === 10) {
+    digits = `1${digits}`;
+  }
+  return `+${digits}`;
 }
 
 async function main() {
@@ -142,7 +159,10 @@ async function main() {
     if (railwayName === "SMTP_PASS") continue;
     const value = process.env[envName]?.trim();
     if (value) {
-      const normalized = railwayName === "TWILIO_FROM_NUMBER" ? normalizeE164(value) : value;
+      const normalized =
+        railwayName === "TWILIO_FROM_NUMBER" || railwayName === "OPERATOR_SMS_NUMBER"
+          ? normalizeE164(value)
+          : value;
       await upsertVariable(token, railwayName, normalized);
     } else {
       missingSecrets.push(railwayName);

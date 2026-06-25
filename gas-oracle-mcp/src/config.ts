@@ -12,6 +12,15 @@ if (NETWORK !== "base-sepolia" && NETWORK !== "base") {
   throw new Error(`NETWORK must be "base-sepolia" or "base", got "${NETWORK}"`);
 }
 
+const isProductionDeploy = process.env.RAILWAY_ENVIRONMENT === "production";
+
+/** Optional shared secret for Cursor IDE SSE connections (/sse, /messages). */
+const mcpApiKey = process.env.MCP_API_KEY?.trim() || undefined;
+
+if (isProductionDeploy && !mcpApiKey) {
+  throw new Error("MCP_API_KEY is required on Railway production deployments");
+}
+
 /** CAIP-2 chain identifiers used by the x402 v2 protocol. */
 const CAIP2: Record<PaymentNetwork, `eip155:${number}`> = {
   "base-sepolia": "eip155:84532",
@@ -49,9 +58,6 @@ function resolvePublicUrl(): string {
   return `http://localhost:${process.env.PORT || 4021}`;
 }
 
-/** Optional shared secret for Cursor IDE SSE connections (/sse, /messages). */
-const mcpApiKey = process.env.MCP_API_KEY?.trim() || undefined;
-
 function resolvePublicBaseUrl(): string {
   return resolvePublicUrl().replace(/\/$/, "");
 }
@@ -82,6 +88,8 @@ export const CONFIG = {
   storageBackend: resolveStorageBackend(),
   webhookRateLimit: Number(process.env.WEBHOOK_RATE_LIMIT || 120),
   webhookRateWindowSec: Number(process.env.WEBHOOK_RATE_WINDOW_SEC || 60),
+  captchaRateLimit: Number(process.env.CAPTCHA_RATE_LIMIT || 30),
+  captchaRateWindowSec: Number(process.env.CAPTCHA_RATE_WINDOW_SEC || 60),
   prices: {
     discovery: process.env.PRICE_DISCOVERY || "$0.001",
     drainInbox: process.env.PRICE_DRAIN_INBOX || "$0.005",

@@ -52,12 +52,15 @@ const baseTask = (): CaptchaTask => ({
   pageurl: "https://example.com/login",
   captcha_type: "hcaptcha",
   status: "pending",
+  poll_token: "a".repeat(64),
+  solve_token: "b".repeat(64),
   created_at: new Date().toISOString(),
 });
 
 const baseAlert = {
   taskId: "550e8400-e29b-41d4-a716-446655440000",
-  solveUrl: "https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000",
+  solveUrl:
+    "https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000?token=operator-secret",
   captchaType: "recaptcha" as const,
   pageUrl: "https://example.com/login",
 };
@@ -84,6 +87,7 @@ test("parseNotificationSettings rejects partial Twilio configuration", () => {
   assert.throws(
     () =>
       parseNotificationSettings({
+        OPERATOR_SMS_NUMBER: "+15555550100",
         TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       }),
     (error: unknown) => {
@@ -96,6 +100,7 @@ test("parseNotificationSettings rejects partial Twilio configuration", () => {
 
 test("parseNotificationSettings validates complete Twilio configuration", () => {
   const settings = parseNotificationSettings({
+    OPERATOR_SMS_NUMBER: "+15555550100",
     TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     TWILIO_AUTH_TOKEN: "0123456789abcdef",
     TWILIO_FROM_NUMBER: "+15551234567",
@@ -105,10 +110,49 @@ test("parseNotificationSettings validates complete Twilio configuration", () => 
   assert.equal(settings.sms.fromNumber, "+15551234567");
 });
 
+test("parseNotificationSettings normalizes Twilio from numbers with formatting", () => {
+  const settings = parseNotificationSettings({
+    OPERATOR_SMS_NUMBER: "+15555550100",
+    TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    TWILIO_AUTH_TOKEN: "0123456789abcdef",
+    TWILIO_FROM_NUMBER: "(555) 123-4567",
+  });
+  assert.ok(settings.sms);
+  assert.equal(settings.sms.fromNumber, "+15551234567");
+});
+
+test("parseNotificationSettings normalizes Twilio from numbers missing a leading plus", () => {
+  const settings = parseNotificationSettings({
+    OPERATOR_SMS_NUMBER: "+15555550100",
+    TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    TWILIO_AUTH_TOKEN: "0123456789abcdef",
+    TWILIO_FROM_NUMBER: "18445551234",
+  });
+  assert.ok(settings.sms);
+  assert.equal(settings.sms.fromNumber, "+18445551234");
+});
+
+test("parseNotificationSettings requires operator SMS when Twilio is configured", () => {
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        TWILIO_ACCOUNT_SID: "ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        TWILIO_AUTH_TOKEN: "0123456789abcdef",
+        TWILIO_FROM_NUMBER: "+15551234567",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /OPERATOR_SMS_NUMBER/i);
+      return true;
+    },
+  );
+});
+
 test("parseNotificationSettings rejects partial SMTP configuration", () => {
   assert.throws(
     () =>
       parseNotificationSettings({
+        OPERATOR_SMS_NUMBER: "+15555550100",
         SMTP_USER: "ops@example.com",
       }),
     (error: unknown) => {
@@ -121,6 +165,7 @@ test("parseNotificationSettings rejects partial SMTP configuration", () => {
 
 test("parseNotificationSettings validates complete SMTP configuration", () => {
   const settings = parseNotificationSettings({
+    OPERATOR_SMS_NUMBER: "+15555550100",
     SMTP_USER: "ops@example.com",
     SMTP_PASS: "app-password",
     SMTP_HOST: "smtp.gmail.com",
@@ -170,7 +215,7 @@ test("buildSmsBody includes sanitized task id and solve URL", () => {
   const body = buildSmsBody(baseAlert);
   assert.equal(
     body,
-    "⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000",
+    "⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000?token=operator-secret",
   );
 });
 
@@ -224,12 +269,15 @@ test("renderOperatorSmsConsentPage documents operator opt-in for Twilio verifica
   assert.doesNotMatch(html, /<script>/);
 });
 
-test("renderSolvePage injects task id and solve endpoint safely", () => {
+test("renderSolvePage injects task id, solve token, and solve endpoint safely", () => {
   const task = baseTask();
-  const html = renderSolvePage(task);
+  const html = renderSolvePage(task, task.solve_token);
 
   const taskIdConstant = extractScriptConstant(html, "TASK_ID");
   assert.equal(taskIdConstant, task.task_id);
+
+  const solveTokenConstant = extractScriptConstant(html, "SOLVE_TOKEN");
+  assert.equal(solveTokenConstant, task.solve_token);
 
   const fetchPath = extractFetchSolvePath(html);
   assert.equal(fetchPath, `/api/v1/captcha/solve/${task.task_id}`);
@@ -250,9 +298,10 @@ test("renderSolvePage escapes malicious sitekey and task id values", () => {
     captcha_type: "turnstile",
     task_id: '"><script>alert("xss")</script>',
     sitekey: '" onerror="alert(1)',
+    solve_token: 'token"onclick="alert(1)',
   };
 
-  const html = renderSolvePage(task);
+  const html = renderSolvePage(task, task.solve_token);
 
   assert.doesNotMatch(html, /<script>alert\("xss"\)<\/script>/);
   assert.doesNotMatch(html, /onerror="alert\(1\)"/);
