@@ -1,0 +1,38 @@
+# Closes open PRs whose head branch was deleted (orphaned after consolidation).
+name: Close orphaned PRs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  close-orphaned:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Close PRs with missing head branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr list --state open --json number,headRefName,title --limit 100 > prs.json
+          closed=0
+          while IFS= read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            branch=$(echo "$pr" | jq -r '.headRefName')
+            title=$(echo "$pr" | jq -r '.title')
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "keep #$number ($branch): $title"
+            else
+              echo "close #$number (branch deleted): $title"
+              gh pr close "$number" --comment "Auto-closed: head branch was deleted after consolidation to main."
+              closed=$((closed + 1))
+            fi
+          done < <(jq -c '.[]' prs.json)
+          echo "Closed $closed orphaned PR(s)."
