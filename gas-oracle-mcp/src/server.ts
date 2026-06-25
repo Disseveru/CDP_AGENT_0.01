@@ -41,7 +41,14 @@ import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
 import { relayPost } from "./relay.js";
 import { appendEvent, inboxExists, initializeStorage, removeInboxEventsByIds, getStorageHealth } from "./store.js";
-import { allowRateLimitedRequest, allowWebhookRequest, getRedisHealth, isRedisEnabled } from "./redis.js";
+import {
+  acquireInboxDrainLock,
+  allowRateLimitedRequest,
+  allowWebhookRequest,
+  getRedisHealth,
+  isRedisEnabled,
+  releaseInboxDrainLock,
+} from "./redis.js";
 import { runMigrations } from "./migrate.js";
 import {
   buildAccepts,
@@ -613,6 +620,7 @@ interface PendingDrainAck {
   inboxId: string;
   secret: string;
   eventIds: string[];
+  releaseDrainLock: boolean;
 }
 
 function paymentKeyFromPayload(payload: unknown): string {
@@ -636,6 +644,8 @@ function buildMcpServer(state: RuntimeState): McpServer {
 
   /** Peeks held until x402 settlement succeeds for a matching payment payload. */
   const pendingDrainAcks = new Map<string, PendingDrainAck>();
+  /** MCP CAPTCHA tasks rolled back when x402 settlement fails after the handler returns. */
+  const pendingCaptchaTasks = new Map<string, string>();
 
   if (isReady(state)) {
     for (const { definition, accepts, extensions } of state.tools) {
@@ -657,10 +667,29 @@ function buildMcpServer(state: RuntimeState): McpServer {
             const paymentKey = paymentKeyFromPayload(paymentPayload);
             const pending = pendingDrainAcks.get(paymentKey);
             if (pending) {
-              if (settlement.success) {
-                await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+              try {
+                if (settlement.success) {
+                  await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+                }
+              } finally {
+                if (pending.releaseDrainLock) {
+                  await releaseInboxDrainLock(pending.inboxId);
+                }
+                pendingDrainAcks.delete(paymentKey);
               }
-              pendingDrainAcks.delete(paymentKey);
+            }
+
+            const captchaTaskId = pendingCaptchaTasks.get(paymentKey);
+            if (captchaTaskId) {
+              if (!settlement.success) {
+                await deleteCaptchaTask(captchaTaskId).catch((error) => {
+                  console.error(
+                    "[captcha] Failed to roll back MCP task after settlement failure:",
+                    error,
+                  );
+                });
+              }
+              pendingCaptchaTasks.delete(paymentKey);
             }
 
             console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
@@ -669,16 +698,35 @@ function buildMcpServer(state: RuntimeState): McpServer {
       });
 
       const paidHandler = paid(async (args, context) => {
-        const toolResult = await definition.handler(args);
         if (definition.name === "drain_inbox") {
-          const paymentKey = paymentKeyFromMeta(context?.meta);
+          const inboxId = String(args.inboxId);
+          const acquired = await acquireInboxDrainLock(inboxId, 120);
+          if (!acquired) {
+            throw new Error(`Inbox ${inboxId} drain already in progress; retry shortly`);
+          }
+        }
+
+        const toolResult = await definition.handler(args);
+        const paymentKey = paymentKeyFromMeta(context?.meta);
+
+        if (definition.name === "drain_inbox") {
           const events = (toolResult as { events?: { id: string }[] }).events ?? [];
           if (paymentKey) {
             pendingDrainAcks.set(paymentKey, {
               inboxId: String(args.inboxId),
               secret: String(args.secret),
               eventIds: events.map((event) => event.id),
+              releaseDrainLock: true,
             });
+          } else {
+            await releaseInboxDrainLock(String(args.inboxId));
+          }
+        }
+
+        if (definition.name === "request_human_captcha_bypass" && paymentKey) {
+          const taskId = (toolResult as { task_id?: string }).task_id;
+          if (taskId) {
+            pendingCaptchaTasks.set(paymentKey, taskId);
           }
         }
 
