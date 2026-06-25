@@ -40,7 +40,7 @@ import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
 import { relayPost } from "./relay.js";
 import { appendEvent, inboxExists, initializeStorage, removeInboxEventsByIds, getStorageHealth } from "./store.js";
-import { allowWebhookRequest, getRedisHealth, isRedisEnabled } from "./redis.js";
+import { allowRateLimitedRequest, allowWebhookRequest, getRedisHealth, isRedisEnabled } from "./redis.js";
 import { runMigrations } from "./migrate.js";
 import {
   buildAccepts,
@@ -292,12 +292,13 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
         pageurl: String(args.pageurl),
         captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
       });
-      const solved = await waitForCaptchaSolution(created.task_id);
+      const solved = await waitForCaptchaSolution(created.task_id, created.poll_token);
       return {
         task_id: solved.task_id,
         status: solved.status,
         solution_token: solved.solution_token,
         solve_url: created.solve_url,
+        poll_token: created.poll_token,
         completed_at: solved.completed_at,
       };
     },
@@ -757,7 +758,9 @@ function safeCompareSecret(provided: string, expected: string): boolean {
 }
 
 function isAuthorizedMcpRequest(req: Request): boolean {
-  if (!CONFIG.mcpApiKey) return true;
+  if (!CONFIG.mcpApiKey) {
+    return process.env.RAILWAY_ENVIRONMENT !== "production";
+  }
 
   const authorization = req.get("authorization");
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
@@ -775,6 +778,16 @@ function requireMcpApiKey(req: Request, res: Response, next: NextFunction): void
   }
 
   res.status(401).json({ error: "Unauthorized" });
+}
+
+async function allowCaptchaRequest(req: Request): Promise<boolean> {
+  const clientIp = req.ip || "unknown";
+  return allowRateLimitedRequest(
+    "captcha",
+    clientIp,
+    CONFIG.captchaRateLimit,
+    CONFIG.captchaRateWindowSec,
+  );
 }
 
 async function main(): Promise<void> {
@@ -946,17 +959,32 @@ async function main(): Promise<void> {
     handleDiscoveryRequest(req, res, state).catch(next);
   });
 
-  app.post("/api/v1/captcha/submit", (req, res, next) => {
+  app.post("/api/v1/captcha/submit", async (req, res, next) => {
+    if (!(await allowCaptchaRequest(req))) {
+      res.status(429).json({ error: "Rate limit exceeded" });
+      return;
+    }
     handleCaptchaSubmitRequest(req, res, state).catch(next);
   });
 
   app.get("/api/v1/captcha/status", async (req, res) => {
+    if (!(await allowCaptchaRequest(req))) {
+      res.status(429).json({ error: "Rate limit exceeded" });
+      return;
+    }
+
     const taskId = req.query.task_id;
+    const pollToken = req.query.poll_token;
     if (typeof taskId !== "string" || !taskId) {
       res.status(400).json({ error: "task_id query parameter required" });
       return;
     }
-    const status = await getCaptchaStatus(taskId);
+    if (typeof pollToken !== "string" || !pollToken) {
+      res.status(400).json({ error: "poll_token query parameter required" });
+      return;
+    }
+
+    const status = await getCaptchaStatus(taskId, pollToken);
     if (!status) {
       res.status(404).json({ error: "task_not_found" });
       return;
@@ -965,16 +993,33 @@ async function main(): Promise<void> {
   });
 
   app.get("/solve/:taskId", async (req, res) => {
+    if (!(await allowCaptchaRequest(req))) {
+      res.status(429).send("Rate limit exceeded");
+      return;
+    }
+
+    const solveToken =
+      typeof req.query.token === "string"
+        ? req.query.token
+        : typeof req.query.solve_token === "string"
+          ? req.query.solve_token
+          : "";
     const task = await getCaptchaTask(req.params.taskId);
-    if (!task) {
+    if (!task || !solveToken) {
       res.status(404).send("Task not found");
       return;
     }
+
+    if (!safeCompareSecret(solveToken, task.solve_token)) {
+      res.status(404).send("Task not found");
+      return;
+    }
+
     if (task.status === "completed") {
       res.status(200).send("<p>Already solved. Agent can poll /api/v1/captcha/status.</p>");
       return;
     }
-    res.type("html").send(renderSolvePage(task));
+    res.type("html").send(renderSolvePage(task, solveToken));
   });
 
   app.get("/operator-sms-consent", (_req, res) => {
@@ -990,13 +1035,24 @@ async function main(): Promise<void> {
   });
 
   app.post("/api/v1/captcha/solve/:taskId", async (req, res) => {
-    const solutionToken =
-      typeof req.body?.solution_token === "string" ? req.body.solution_token.trim() : "";
-    if (!solutionToken) {
-      res.status(400).json({ error: "solution_token required" });
+    if (!(await allowCaptchaRequest(req))) {
+      res.status(429).json({ error: "Rate limit exceeded" });
       return;
     }
-    const updated = await completeCaptchaTask(req.params.taskId, solutionToken);
+
+    const solutionToken =
+      typeof req.body?.solution_token === "string" ? req.body.solution_token.trim() : "";
+    const solveToken =
+      typeof req.body?.solve_token === "string"
+        ? req.body.solve_token.trim()
+        : typeof req.query.token === "string"
+          ? req.query.token
+          : "";
+    if (!solutionToken || !solveToken) {
+      res.status(400).json({ error: "solution_token and solve_token required" });
+      return;
+    }
+    const updated = await completeCaptchaTask(req.params.taskId, solutionToken, solveToken);
     if (!updated) {
       res.status(404).json({ error: "task_not_found" });
       return;

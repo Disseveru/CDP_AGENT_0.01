@@ -44,6 +44,7 @@ export async function getCaptchaTask(taskId: string): Promise<CaptchaTask | null
   return raw ? (JSON.parse(raw) as CaptchaTask) : null;
 }
 
-export function captchaSolveUrl(taskId: string): string {
-  return `${CONFIG.publicUrl}/solve/${taskId}`;
+export function captchaSolveUrl(taskId: string, solveToken: string): string {
+  const token = encodeURIComponent(solveToken);
+  return `${CONFIG.publicUrl}/solve/${taskId}?token=${token}`;
 }

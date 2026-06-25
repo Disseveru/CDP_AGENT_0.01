@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageReady } from "./store.js";
 import { notifyOperator } from "./notifications.js";
+import { generateCaptchaSecret, safeCompareSecret } from "./tokens.js";
 import type {
   CaptchaSubmitInput,
   CaptchaSubmitResult,
@@ -31,19 +32,23 @@ export async function createCaptchaTask(
   await assertCaptchaStorageReady();
 
   const taskId = crypto.randomUUID();
+  const pollToken = generateCaptchaSecret();
+  const solveToken = generateCaptchaSecret();
   const task: CaptchaTask = {
     task_id: taskId,
     sitekey: input.sitekey,
     pageurl: input.pageurl,
     captcha_type: input.captcha_type,
     status: "pending",
+    poll_token: pollToken,
+    solve_token: solveToken,
     created_at: new Date().toISOString(),
     payment_tx: options?.paymentTx,
   };
 
   await saveCaptchaTask(task);
 
-  const solveUrl = captchaSolveUrl(taskId);
+  const solveUrl = captchaSolveUrl(taskId, solveToken);
   void notifyOperator({
     taskId,
     solveUrl,
@@ -53,12 +58,18 @@ export async function createCaptchaTask(
     console.error("[captcha] Operator alert failed:", error);
   });
 
-  return { task_id: taskId, status: "pending", solve_url: solveUrl };
+  return { task_id: taskId, status: "pending", solve_url: solveUrl, poll_token: pollToken };
 }
 
-export async function getCaptchaStatus(taskId: string): Promise<CaptchaStatusResult | null> {
+export async function getCaptchaStatus(
+  taskId: string,
+  pollToken: string,
+): Promise<CaptchaStatusResult | null> {
   const task = await getCaptchaTask(taskId);
   if (!task) return null;
+  if (!pollToken || !safeCompareSecret(pollToken, task.poll_token)) {
+    return null;
+  }
 
   return {
     task_id: task.task_id,
@@ -72,9 +83,13 @@ export async function getCaptchaStatus(taskId: string): Promise<CaptchaStatusRes
 export async function completeCaptchaTask(
   taskId: string,
   solutionToken: string,
+  solveToken: string,
 ): Promise<CaptchaTask | null> {
   const task = await getCaptchaTask(taskId);
   if (!task) return null;
+  if (!solveToken || !safeCompareSecret(solveToken, task.solve_token)) {
+    return null;
+  }
   if (task.status === "completed") return task;
 
   const updated: CaptchaTask = {
@@ -106,11 +121,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Poll until the operator completes the solve page or timeout. */
-export async function waitForCaptchaSolution(taskId: string): Promise<CaptchaStatusResult> {
+export async function waitForCaptchaSolution(
+  taskId: string,
+  pollToken: string,
+): Promise<CaptchaStatusResult> {
   const deadline = Date.now() + CONFIG.captcha.pollTimeoutMs;
 
   while (Date.now() < deadline) {
-    const status = await getCaptchaStatus(taskId);
+    const status = await getCaptchaStatus(taskId, pollToken);
     if (!status) {
       throw new Error(`CAPTCHA task ${taskId} not found`);
     }
@@ -121,6 +139,6 @@ export async function waitForCaptchaSolution(taskId: string): Promise<CaptchaSta
   }
 
   throw new Error(
-    `CAPTCHA task ${taskId} timed out after ${CONFIG.captcha.pollTimeoutMs}ms — solve at ${captchaSolveUrl(taskId)}`,
+    `CAPTCHA task ${taskId} timed out after ${CONFIG.captcha.pollTimeoutMs}ms`,
   );
 }

@@ -62,13 +62,13 @@
       explicitly authorizes AgentWire to send CAPTCHA alert SMS messages to that number.
     </p>
     <ul>
-      <li><strong>Configured operator number:</strong> +17472241814</li>
+      <li><strong>Configured operator number:</strong> set via <code>OPERATOR_SMS_NUMBER</code> on the live service (<a href="https://gas-oracle-mcp-production.up.railway.app/operator-sms-consent">/operator-sms-consent</a>)</li>
       <li><strong>Messages are sent only</strong> to this pre-registered operator number.</li>
       <li><strong>No public signup</strong> and no messages to numbers that have not been configured by the operator.</li>
     </ul>
 
     <h2>Sample message</h2>
-    <pre>⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000</pre>
+    <pre>⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000?token=…</pre>
 
     <h2>Message frequency</h2>
     <p>

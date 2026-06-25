@@ -46,7 +46,12 @@ export async function getRedisHealth(): Promise<{ ok: boolean; detail?: string }
  * Simple fixed-window rate limiter for webhook ingestion.
  * Returns true when the request should be allowed.
  */
-export async function allowWebhookRequest(key: string, limit: number, windowSec: number): Promise<boolean> {
+export async function allowRateLimitedRequest(
+  category: string,
+  key: string,
+  limit: number,
+  windowSec: number,
+): Promise<boolean> {
   const redis = getRedis();
   if (!redis) {
     return true;
@@ -57,16 +62,21 @@ export async function allowWebhookRequest(key: string, limit: number, windowSec:
       await redis.connect();
     }
 
-    const bucket = `agentwire:hook:${key}`;
+    const bucket = `agentwire:ratelimit:${category}:${key}`;
     const count = await redis.incr(bucket);
     if (count === 1) {
       await redis.expire(bucket, windowSec);
     }
     return count <= limit;
   } catch (error) {
-    console.warn("[redis] Rate limit check failed, allowing request:", error);
+    console.warn(`[redis] Rate limit check failed (${category}), allowing request:`, error);
     return true;
   }
+}
+
+/** Fixed-window rate limiter for webhook ingestion. */
+export async function allowWebhookRequest(key: string, limit: number, windowSec: number): Promise<boolean> {
+  return allowRateLimitedRequest("hook", key, limit, windowSec);
 }
 
 export async function closeRedis(): Promise<void> {

@@ -90,7 +90,7 @@ export function renderOperatorSmsConsentPage(input: OperatorSmsConsentPageInput)
     </ul>
 
     <h2>Sample message</h2>
-    <pre>⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: ${publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000</pre>
+    <pre>⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: ${publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000?token=…</pre>
 
     <h2>Message frequency</h2>
     <p>

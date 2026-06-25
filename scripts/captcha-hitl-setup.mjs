@@ -22,7 +22,7 @@ const repoRoot = join(__dirname, "..");
 
 const DEFAULTS = {
   publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
-  operatorSms: "+17472241814",
+  operatorSms: process.env.OPERATOR_SMS_NUMBER?.trim(),
   consentPageUrl: "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html",
 };
 
@@ -78,6 +78,9 @@ async function sendTestSms() {
 
   if (!accountSid || !authToken || !fromNumber) {
     throw new Error("TWILIO_* env vars required for --test-sms");
+  }
+  if (!to) {
+    throw new Error("OPERATOR_SMS_NUMBER required for --test-sms");
   }
 
   const body = `⚠️ CAPTCHA Alert: Agent task test-setup is waiting. Solve here: ${publicUrl}/solve/test-setup`;

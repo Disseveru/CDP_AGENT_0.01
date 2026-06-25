@@ -76,6 +76,18 @@ function readEnv(env: EnvSource, key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** Normalize Twilio/Railway phone values to E.164 (+15551234567). */
+export function normalizeE164(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  let digits = trimmed.replace(/\D/g, "");
+  if (!digits) return trimmed;
+  if (digits.length === 10) {
+    digits = `1${digits}`;
+  }
+  return `+${digits}`;
+}
+
 function formatZodIssues(error: z.ZodError): string[] {
   return error.issues.map((issue) => {
     const path = issue.path.length > 0 ? issue.path.join(".") : "value";
@@ -118,13 +130,26 @@ function parsePartialChannel<T>(
  * others missing) fails immediately so misconfiguration is caught at boot.
  */
 export function parseNotificationSettings(env: EnvSource = process.env): NotificationSettings {
-  const operatorSmsRaw = readEnv(env, "OPERATOR_SMS_NUMBER") ?? "+17472241814";
-  const operatorSms = e164PhoneSchema.safeParse(operatorSmsRaw);
-  if (!operatorSms.success) {
-    throw new NotificationConfigError(
-      "OPERATOR_SMS_NUMBER is invalid",
-      formatZodIssues(operatorSms.error),
-    );
+  const operatorSmsRaw = readEnv(env, "OPERATOR_SMS_NUMBER");
+  const twilioKeys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"] as const;
+  const twilioConfigured = twilioKeys.some((key) => readEnv(env, key) !== undefined);
+  const requiresOperatorSms =
+    process.env.RAILWAY_ENVIRONMENT === "production" || twilioConfigured;
+
+  if (!operatorSmsRaw) {
+    if (requiresOperatorSms) {
+      throw new NotificationConfigError("OPERATOR_SMS_NUMBER is required", [
+        "OPERATOR_SMS_NUMBER: set the operator mobile number in E.164 format",
+      ]);
+    }
+  } else {
+    const operatorSms = e164PhoneSchema.safeParse(normalizeE164(operatorSmsRaw));
+    if (!operatorSms.success) {
+      throw new NotificationConfigError(
+        "OPERATOR_SMS_NUMBER is invalid",
+        formatZodIssues(operatorSms.error),
+      );
+    }
   }
 
   const operatorEmailRaw = readEnv(env, "OPERATOR_EMAIL");
@@ -148,7 +173,7 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
     (source) => ({
       accountSid: readEnv(source, "TWILIO_ACCOUNT_SID"),
       authToken: readEnv(source, "TWILIO_AUTH_TOKEN"),
-      fromNumber: readEnv(source, "TWILIO_FROM_NUMBER"),
+      fromNumber: normalizeE164(readEnv(source, "TWILIO_FROM_NUMBER") ?? ""),
       apiBaseUrl: TWILIO_API_BASE_URL,
     }),
   );
@@ -166,8 +191,12 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
     }),
   );
 
+  const operatorSmsNumber = operatorSmsRaw
+    ? e164PhoneSchema.parse(normalizeE164(operatorSmsRaw))
+    : "+15555550100";
+
   return {
-    operatorSmsNumber: operatorSms.data,
+    operatorSmsNumber,
     operatorEmail,
     sms,
     email: smtp,

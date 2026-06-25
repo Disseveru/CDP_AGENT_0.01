@@ -2,11 +2,12 @@ import { captchaWidgetScript } from "./tasks.js";
 import { escapeHtml, escapeHtmlAttribute } from "./html.js";
 import type { CaptchaTask } from "./types.js";
 
-export function renderSolvePage(task: CaptchaTask): string {
+export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
   const { scriptUrl, globalName } = captchaWidgetScript(task.captcha_type);
   const sitekey = escapeHtmlAttribute(task.sitekey);
   const taskId = escapeHtmlAttribute(task.task_id);
   const pageurl = escapeHtml(task.pageurl);
+  const solveTokenAttr = escapeHtmlAttribute(solveToken);
 
   const widgetMount =
     task.captcha_type === "turnstile"
@@ -90,6 +91,7 @@ export function renderSolvePage(task: CaptchaTask): string {
   </main>
   <script>
     const TASK_ID = "${taskId}";
+    const SOLVE_TOKEN = "${solveTokenAttr}";
     const statusEl = document.getElementById("status");
     const submitBtn = document.getElementById("submit-btn");
 
@@ -131,7 +133,7 @@ export function renderSolvePage(task: CaptchaTask): string {
         const res = await fetch("/api/v1/captcha/solve/" + TASK_ID, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ solution_token: token }),
+          body: JSON.stringify({ solution_token: token, solve_token: SOLVE_TOKEN }),
         });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || res.statusText);
