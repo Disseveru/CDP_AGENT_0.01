@@ -89,6 +89,19 @@ async function main() {
   );
 
   results.push(
+    await check("/sse endpoint exists (deploy includes PR #26)", async () => {
+      const res = await fetch(`${railwayUrl}/`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (!body.sseEndpoint) {
+        throw new Error(
+          "sseEndpoint missing from discovery — Railway is still on an old build. Redeploy the latest main branch.",
+        );
+      }
+    }),
+  );
+
+  results.push(
     await check("/sse without API key should be blocked", async () => {
       const res = await fetch(`${railwayUrl}/sse`);
       if (res.status === 404) {
