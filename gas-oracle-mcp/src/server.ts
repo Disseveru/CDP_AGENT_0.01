@@ -41,7 +41,14 @@ import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
 import { relayPost } from "./relay.js";
 import { appendEvent, inboxExists, initializeStorage, removeInboxEventsByIds, getStorageHealth } from "./store.js";
-import { allowRateLimitedRequest, allowWebhookRequest, getRedisHealth, isRedisEnabled } from "./redis.js";
+import {
+  acquireInboxDrainLock,
+  allowRateLimitedRequest,
+  allowWebhookRequest,
+  getRedisHealth,
+  isRedisEnabled,
+  releaseInboxDrainLock,
+} from "./redis.js";
 import { runMigrations } from "./migrate.js";
 import {
   buildAccepts,
@@ -288,20 +295,16 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       if (!isCaptchaStorageConfigured()) {
         throw new Error("CAPTCHA storage unavailable: REDIS_URL must be configured on Railway");
       }
-      const created = await createCaptchaTask({
-        sitekey: String(args.sitekey),
-        pageurl: String(args.pageurl),
-        captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
-      });
-      const solved = await waitForCaptchaSolution(created.task_id, created.poll_token);
-      return {
-        task_id: solved.task_id,
-        status: solved.status,
-        solution_token: solved.solution_token,
-        solve_url: created.solve_url,
-        poll_token: created.poll_token,
-        completed_at: solved.completed_at,
-      };
+      // Task creation only — operator alert and polling run after x402 settlement
+      // (see request_human_captcha_bypass wrapper below).
+      return await createCaptchaTask(
+        {
+          sitekey: String(args.sitekey),
+          pageurl: String(args.pageurl),
+          captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
+        },
+        { notify: false },
+      );
     },
   },
 ];
@@ -613,6 +616,7 @@ interface PendingDrainAck {
   inboxId: string;
   secret: string;
   eventIds: string[];
+  releaseDrainLock: boolean;
 }
 
 function paymentKeyFromPayload(payload: unknown): string {
@@ -626,6 +630,30 @@ function paymentKeyFromMeta(meta: Record<string, unknown> | undefined): string |
   }
 
   return paymentKeyFromPayload(payment);
+}
+
+function parseCaptchaTaskCreated(
+  result: { content?: { type: string; text?: string }[] },
+): { task_id: string; poll_token: string; solve_url: string } | null {
+  const text = result.content?.[0]?.text;
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as {
+      task_id?: string;
+      poll_token?: string;
+      solve_url?: string;
+    };
+    if (parsed.task_id && parsed.poll_token && parsed.solve_url) {
+      return {
+        task_id: parsed.task_id,
+        poll_token: parsed.poll_token,
+        solve_url: parsed.solve_url,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function buildMcpServer(state: RuntimeState): McpServer {
@@ -657,10 +685,24 @@ function buildMcpServer(state: RuntimeState): McpServer {
             const paymentKey = paymentKeyFromPayload(paymentPayload);
             const pending = pendingDrainAcks.get(paymentKey);
             if (pending) {
-              if (settlement.success) {
-                await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+              try {
+                if (settlement.success) {
+                  try {
+                    await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+                  } catch (error) {
+                    console.error(
+                      `[drain] Failed to delete inbox events after successful settlement ` +
+                        `(inbox=${pending.inboxId}, count=${pending.eventIds.length}):`,
+                      error,
+                    );
+                  }
+                }
+              } finally {
+                if (pending.releaseDrainLock) {
+                  await releaseInboxDrainLock(pending.inboxId);
+                }
+                pendingDrainAcks.delete(paymentKey);
               }
-              pendingDrainAcks.delete(paymentKey);
             }
 
             console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
@@ -669,16 +711,28 @@ function buildMcpServer(state: RuntimeState): McpServer {
       });
 
       const paidHandler = paid(async (args, context) => {
-        const toolResult = await definition.handler(args);
         if (definition.name === "drain_inbox") {
-          const paymentKey = paymentKeyFromMeta(context?.meta);
+          const inboxId = String(args.inboxId);
+          const acquired = await acquireInboxDrainLock(inboxId, 120);
+          if (!acquired) {
+            throw new Error(`Inbox ${inboxId} drain already in progress; retry shortly`);
+          }
+        }
+
+        const toolResult = await definition.handler(args);
+        const paymentKey = paymentKeyFromMeta(context?.meta);
+
+        if (definition.name === "drain_inbox") {
           const events = (toolResult as { events?: { id: string }[] }).events ?? [];
           if (paymentKey) {
             pendingDrainAcks.set(paymentKey, {
               inboxId: String(args.inboxId),
               secret: String(args.secret),
               eventIds: events.map((event) => event.id),
+              releaseDrainLock: true,
             });
+          } else {
+            await releaseInboxDrainLock(String(args.inboxId));
           }
         }
 
@@ -697,6 +751,78 @@ function buildMcpServer(state: RuntimeState): McpServer {
         const settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
           | { success?: boolean; errorReason?: string }
           | undefined;
+
+        if (definition.name === "request_human_captcha_bypass") {
+          const created = parseCaptchaTaskCreated(result);
+          if (created) {
+            if (settlement?.success === false) {
+              await deleteCaptchaTask(created.task_id).catch((error) => {
+                console.error("[captcha] Failed to roll back MCP task after settlement failure:", error);
+              });
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: settlement.errorReason || "Payment settlement failed",
+                      settlement,
+                    }),
+                  },
+                ],
+              };
+            }
+
+            void notifyOperator({
+              taskId: created.task_id,
+              solveUrl: created.solve_url,
+              captchaType: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
+              pageUrl: String(args.pageurl),
+            }).catch((error) => {
+              console.error("[captcha] Operator alert failed:", error);
+            });
+
+            try {
+              const solved = await waitForCaptchaSolution(created.task_id, created.poll_token);
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify(
+                      {
+                        task_id: solved.task_id,
+                        status: solved.status,
+                        solution_token: solved.solution_token,
+                        solve_url: created.solve_url,
+                        poll_token: created.poll_token,
+                        completed_at: solved.completed_at,
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+                _meta: result._meta,
+              };
+            } catch (error) {
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: error instanceof Error ? error.message : String(error),
+                      task_id: created.task_id,
+                      poll_token: created.poll_token,
+                      solve_url: created.solve_url,
+                    }),
+                  },
+                ],
+                _meta: result._meta,
+              };
+            }
+          }
+        }
 
         if (settlement?.success === false) {
           return {
