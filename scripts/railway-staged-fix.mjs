@@ -7,6 +7,7 @@
  *   RAILWAY_TOKEN=... npm run railway:staged-fix -- --apply
  */
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
 const PROJECT_ID = "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2";
@@ -36,12 +37,22 @@ async function gql(token, query, variables) {
   return body.data;
 }
 
-function volumeIdsFromPatch(patch) {
+export function volumeIdsFromPatch(patch, serviceId = SERVICE_ID) {
   const ids = new Set();
   for (const id of Object.keys(patch?.volumes || {})) ids.add(id);
-  const mounts = patch?.services?.[SERVICE_ID]?.volumeMounts || {};
+  const mounts = patch?.services?.[serviceId]?.volumeMounts || {};
   for (const id of Object.keys(mounts)) ids.add(id);
   return [...ids];
+}
+
+/** Skip volumes that are mounted or are the primary MCP data volume. */
+export function shouldSkipVolumeId(volumeId, instances, serviceId = SERVICE_ID, mountPath = MOUNT_PATH) {
+  const mountedIds = new Set(instances.map((instance) => instance.volumeId));
+  if (mountedIds.has(volumeId)) return true;
+  const primaryMcp = instances.find(
+    (instance) => instance.serviceId === serviceId && instance.mountPath === mountPath,
+  );
+  return Boolean(primaryMcp && volumeId === primaryMcp.volumeId);
 }
 
 async function listVolumeInstances(token) {
@@ -73,14 +84,8 @@ async function listProjectVolumes(token) {
 }
 
 async function deleteOrphanVolumes(token, patchVolumeIds, instances, projectVolumes) {
-  const mountedIds = new Set(instances.map((instance) => instance.volumeId));
-  const primaryMcp = instances.find(
-    (instance) => instance.serviceId === SERVICE_ID && instance.mountPath === MOUNT_PATH,
-  );
-
   for (const volumeId of patchVolumeIds) {
-    if (mountedIds.has(volumeId)) continue;
-    if (primaryMcp && volumeId === primaryMcp.volumeId) continue;
+    if (shouldSkipVolumeId(volumeId, instances)) continue;
     const known = projectVolumes.find((volume) => volume.id === volumeId);
     if (!known) continue;
     await gql(
@@ -92,7 +97,7 @@ async function deleteOrphanVolumes(token, patchVolumeIds, instances, projectVolu
   }
 }
 
-async function clearStagedUi(token, staged) {
+async function clearStagedUi(token, staged, instances) {
   const patchVolumeIds = volumeIdsFromPatch(staged.patch);
   if (patchVolumeIds.length === 0) {
     await gql(
@@ -118,6 +123,10 @@ async function clearStagedUi(token, staged) {
   }
 
   for (const volumeId of patchVolumeIds) {
+    if (shouldSkipVolumeId(volumeId, instances)) {
+      console.log(`Skipping isDeleted for protected volume ${volumeId}.`);
+      continue;
+    }
     try {
       await gql(
         token,
@@ -204,7 +213,7 @@ async function main() {
 
   const patchVolumeIds = volumeIdsFromPatch(staged.patch);
   await deleteOrphanVolumes(token, patchVolumeIds, instances, projectVolumes);
-  await clearStagedUi(token, staged);
+  await clearStagedUi(token, staged, instances);
 
   const after = await gql(
     token,
@@ -225,7 +234,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}
