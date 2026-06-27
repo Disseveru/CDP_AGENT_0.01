@@ -94,7 +94,47 @@ async function ensureRedisService(token) {
   return serviceId;
 }
 
+async function hasMcpVolumeMount(token) {
+  const data = await gql(
+    token,
+    `query($environmentId: String!) {
+      environment(id: $environmentId) {
+        volumeInstances {
+          edges {
+            node {
+              serviceId
+              mountPath
+              state
+              volume { name }
+            }
+          }
+        }
+      }
+    }`,
+    { environmentId: config.environmentId },
+  );
+
+  const mounted = data.environment.volumeInstances.edges.find(
+    (edge) =>
+      edge.node.serviceId === config.mcpServiceId &&
+      edge.node.mountPath === DEFAULTS.volumeMountPath &&
+      edge.node.state !== "FAILED",
+  );
+
+  if (mounted) {
+    console.log(
+      `MCP volume already mounted: ${mounted.node.volume.name} at ${mounted.node.mountPath}`,
+    );
+    return true;
+  }
+  return false;
+}
+
 async function ensureVolume(token) {
+  if (await hasMcpVolumeMount(token)) {
+    return;
+  }
+
   try {
     const created = await gql(
       token,

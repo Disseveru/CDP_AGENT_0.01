@@ -110,6 +110,38 @@ async function main() {
     return;
   }
 
+  try {
+    const stagedData = await gql(
+      token,
+      `query($environmentId: String!) {
+        environmentStagedChanges(environmentId: $environmentId) {
+          id status message lastAppliedError appliedAt patch
+        }
+      }`,
+      { environmentId: ENVIRONMENT_ID },
+    );
+    const staged = stagedData.environmentStagedChanges;
+    if (staged?.id) {
+      console.log("");
+      console.log(`Railway staged changes: status=${staged.status} id=${staged.id}`);
+      if (staged.status === "APPLYING") {
+        console.log(
+          "  → Stuck APPLYING patch in Railway UI. Discard in dashboard (Inspect → X) or run:",
+        );
+        console.log("    npm run railway:staged-fix");
+      }
+      if (staged.lastAppliedError) {
+        console.log(`  → lastAppliedError: ${staged.lastAppliedError}`);
+      }
+      if (staged.patch?.volumes || staged.patch?.services?.[SERVICE_ID]?.volumeMounts) {
+        console.log("  → patch touches volumes/volumeMounts (duplicate mount can wedge APPLYING).");
+      }
+    }
+  } catch (error) {
+    console.log("");
+    console.log(`Railway staged changes: unavailable (${error.message})`);
+  }
+
   console.log("");
   console.log("Railway variables (format only, values hidden):");
 
