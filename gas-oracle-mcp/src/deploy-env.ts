@@ -1,7 +1,6 @@
 /** Environment keys used to detect managed public deployments. */
-export type DeployEnv = Pick<
-  NodeJS.ProcessEnv,
-  "RAILWAY_ENVIRONMENT" | "RENDER" | "RENDER_SERVICE_TYPE"
+export type DeployEnv = Partial<
+  Pick<NodeJS.ProcessEnv, "RAILWAY_ENVIRONMENT" | "RENDER" | "RENDER_SERVICE_TYPE">
 >;
 
 /**
