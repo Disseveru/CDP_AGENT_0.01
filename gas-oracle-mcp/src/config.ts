@@ -50,9 +50,11 @@ function isCdpFacilitatorUrl(url: string): boolean {
 
 const facilitatorUrl = process.env.FACILITATOR_URL || CDP_FACILITATOR_URL;
 
-/** PUBLIC_URL override, or Railway's injected domain, or local default. */
+/** PUBLIC_URL override, or platform-injected domain, or local default. */
 function resolvePublicUrl(): string {
   if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL;
+  const renderUrl = process.env.RENDER_EXTERNAL_URL?.trim();
+  if (renderUrl) return renderUrl;
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN;
   if (railwayDomain) return `https://${railwayDomain}`;
   return `http://localhost:${process.env.PORT || 4021}`;
