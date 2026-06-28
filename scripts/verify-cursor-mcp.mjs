@@ -17,7 +17,15 @@ const userMcpPath = join(homedir(), ".cursor", "mcp.json");
 
 function loadConfig() {
   if (existsSync(secretsPath)) {
-    return JSON.parse(readFileSync(secretsPath, "utf8"));
+    const secrets = JSON.parse(readFileSync(secretsPath, "utf8"));
+    const publicUrl =
+      secrets.publicUrl?.replace(/\/$/, "") ||
+      secrets.renderUrl?.replace(/\/$/, "") ||
+      secrets.railwayUrl?.replace(/\/$/, "");
+    if (!publicUrl) {
+      throw new Error("No publicUrl in mcp-setup.secrets.json. Run npm run setup:cursor-mcp first.");
+    }
+    return { publicUrl, mcpApiKey: secrets.mcpApiKey };
   }
 
   if (existsSync(userMcpPath)) {
@@ -29,7 +37,7 @@ function loadConfig() {
     const auth = entry.headers?.Authorization || "";
     const apiKey = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     return {
-      railwayUrl: entry.url.replace(/\/sse$/, ""),
+      publicUrl: entry.url.replace(/\/sse$/, ""),
       mcpApiKey: apiKey,
     };
   }
@@ -49,15 +57,16 @@ async function check(name, fn) {
 }
 
 async function main() {
-  const { railwayUrl, mcpApiKey } = loadConfig();
-  console.log(`Checking ${railwayUrl}`);
+  const { publicUrl, mcpApiKey } = loadConfig();
+  const host = publicUrl.includes("onrender.com") ? "Render" : "Railway";
+  console.log(`Checking ${publicUrl} (${host})`);
   console.log("");
 
   const results = [];
 
   results.push(
     await check("/health", async () => {
-      const res = await fetch(`${railwayUrl}/health`);
+      const res = await fetch(`${publicUrl}/health`, { signal: AbortSignal.timeout(120_000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       if (body.status !== "ok") throw new Error(JSON.stringify(body));
@@ -66,7 +75,7 @@ async function main() {
 
   results.push(
     await check("/ready", async () => {
-      const res = await fetch(`${railwayUrl}/ready`);
+      const res = await fetch(`${publicUrl}/ready`, { signal: AbortSignal.timeout(120_000) });
       if (!res.ok) throw new Error(`HTTP ${res.status} (CDP/x402 may still be starting)`);
       const body = await res.json();
       if (body.status !== "ready" && body.status !== "degraded") {
@@ -77,11 +86,10 @@ async function main() {
 
   results.push(
     await check("/sse endpoint deployed (not 404)", async () => {
-      const res = await fetch(`${railwayUrl}/sse`);
+      const res = await fetch(`${publicUrl}/sse`, { signal: AbortSignal.timeout(30_000) });
       if (res.status === 404) {
-        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+        throw new Error(`404 — redeploy ${host} from latest main (SSE transport not deployed yet)`);
       }
-      // 401 without a key means the SSE route exists and MCP_API_KEY auth is enabled.
       if (res.status !== 401 && res.status !== 503) {
         throw new Error(`Expected 401 or 503, got ${res.status}`);
       }
@@ -90,12 +98,12 @@ async function main() {
 
   results.push(
     await check("/sse without API key should be blocked", async () => {
-      const res = await fetch(`${railwayUrl}/sse`);
+      const res = await fetch(`${publicUrl}/sse`, { signal: AbortSignal.timeout(30_000) });
       if (res.status === 404) {
-        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+        throw new Error(`404 — redeploy ${host} from latest main`);
       }
       if (res.status !== 401) {
-        throw new Error(`Expected 401, got ${res.status} (add MCP_API_KEY on Railway and redeploy)`);
+        throw new Error(`Expected 401, got ${res.status} (set MCP_API_KEY on ${host} and redeploy)`);
       }
     }),
   );
@@ -104,19 +112,19 @@ async function main() {
     await check("/sse with API key", async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${railwayUrl}/sse`, {
+      const res = await fetch(`${publicUrl}/sse`, {
         headers: { Authorization: `Bearer ${mcpApiKey}` },
         signal: controller.signal,
       });
       clearTimeout(timeout);
       if (res.status === 404) {
-        throw new Error("404 — redeploy Railway from latest main (SSE transport not deployed yet)");
+        throw new Error(`404 — redeploy ${host} from latest main`);
       }
       if (res.status === 401) {
-        throw new Error("401 — MCP_API_KEY on Railway must match the key from npm run setup:cursor-mcp");
+        throw new Error(`401 — MCP_API_KEY on ${host} must match npm run setup:cursor-mcp / render:provision`);
       }
       if (res.status === 503) {
-        throw new Error("503 — server up but CDP/x402 not ready yet; check Railway logs");
+        throw new Error(`503 — server up but CDP/x402 not ready; check ${host} logs`);
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const contentType = res.headers.get("content-type") || "";
@@ -135,9 +143,14 @@ async function main() {
 
   console.log("Some checks failed.");
   console.log("Typical fixes:");
-  console.log("  • /sse 404 or missing sseEndpoint → Railway → AgentWire → Deployments → Redeploy latest main");
-  console.log("  • /sse 401 → Railway Variables: MCP_API_KEY = value printed by npm run setup:cursor-mcp");
-  console.log("  • /ready 503 → check CDP_API_KEY, CDP_PRIVATE_KEY, CDP_WALLET_SECRET in Railway Variables");
+  if (host === "Render") {
+    console.log("  • RENDER_API_KEY=... npm run render:provision -- --redeploy");
+    console.log("  • /ready 503 → check CDP_API_KEY, CDP_PRIVATE_KEY, CDP_WALLET_SECRET in Render Environment");
+  } else {
+    console.log("  • /sse 404 → Railway → AgentWire → Deployments → Redeploy latest main");
+    console.log("  • /sse 401 → Railway Variables: MCP_API_KEY = value from npm run setup:cursor-mcp");
+    console.log("  • /ready 503 → check CDP keys in Railway Variables");
+  }
   process.exit(1);
 }
 

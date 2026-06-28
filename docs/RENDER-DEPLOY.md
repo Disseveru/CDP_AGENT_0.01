@@ -147,6 +147,15 @@ npm run verify:cursor-mcp
 
 Use the same `MCP_API_KEY` you set in Render.
 
+**Automated setup (when `RENDER_API_KEY` is in Cursor secrets):**
+
+```bash
+RENDER_API_KEY=... npm run render:provision -- --redeploy
+npm run render:diagnose -- https://YOUR-SERVICE.onrender.com
+```
+
+`render:provision` generates `MCP_API_KEY` if missing, sets `PUBLIC_URL`, and triggers a redeploy.
+
 ---
 
 ## Quick test (any browser)
