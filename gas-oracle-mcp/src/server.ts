@@ -24,6 +24,7 @@ import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
+import { isManagedProductionDeploy } from "./deploy-env.js";
 import {
   completeCaptchaTask,
   createCaptchaTask,
@@ -762,7 +763,7 @@ const sseTransports = new Map<string, SSEServerTransport>();
 
 function isAuthorizedMcpRequest(req: Request): boolean {
   if (!CONFIG.mcpApiKey) {
-    return process.env.RAILWAY_ENVIRONMENT !== "production";
+    return !isManagedProductionDeploy();
   }
 
   const authorization = req.get("authorization");

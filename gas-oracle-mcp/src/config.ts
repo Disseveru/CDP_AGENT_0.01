@@ -1,6 +1,7 @@
 import { config as loadEnv } from "dotenv";
 
 import { parseNotificationSettings } from "./captcha/notification-config.js";
+import { isManagedProductionDeploy } from "./deploy-env.js";
 
 loadEnv();
 
@@ -12,13 +13,11 @@ if (NETWORK !== "base-sepolia" && NETWORK !== "base") {
   throw new Error(`NETWORK must be "base-sepolia" or "base", got "${NETWORK}"`);
 }
 
-const isProductionDeploy = process.env.RAILWAY_ENVIRONMENT === "production";
-
 /** Optional shared secret for Cursor IDE SSE connections (/sse, /messages). */
 const mcpApiKey = process.env.MCP_API_KEY?.trim() || undefined;
 
-if (isProductionDeploy && !mcpApiKey) {
-  throw new Error("MCP_API_KEY is required on Railway production deployments");
+if (isManagedProductionDeploy() && !mcpApiKey) {
+  throw new Error("MCP_API_KEY is required on managed production deployments (Railway, Render)");
 }
 
 /** CAIP-2 chain identifiers used by the x402 v2 protocol. */
