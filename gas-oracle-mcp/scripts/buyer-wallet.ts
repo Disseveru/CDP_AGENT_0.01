@@ -8,7 +8,7 @@ import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import type { ClientEvmSigner } from "@x402/evm";
 import { toClientEvmSigner } from "@x402/evm";
 import { encodeFunctionData, erc20Abi } from "viem";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { resolveCdpCredentials } from "../src/wallet.js";
 
@@ -168,6 +168,46 @@ export async function createOwnerEoaBuyer(networkId: AgentKitNetworkId, ownerAdd
  * 2. Sponsor-gas USDC transfer from smart wallet -> owner EOA
  * 3. Sign x402 payments from the owner EOA (EIP-3009 requires an EOA holder)
  */
+const CANONICAL_LEGACY_ADDRESS = "0xed7d30e8bc643503f9da261ed8e623bb6ecf6189" as const;
+
+export function createLocalEnvBuyer() {
+  const mnemonic = process.env.MNEMONIC_PHRASE?.trim();
+  const privateKey =
+    process.env.EOA_PRIVATE_KEY?.trim() ||
+    process.env.PRIVATE_KEY?.trim() ||
+    process.env.DSA_PRIVATE_KEY?.trim() ||
+    process.env.PRIVATE_KEY_2?.trim();
+
+  if (mnemonic) {
+    const account = mnemonicToAccount(mnemonic);
+    console.log(`[buyer] Local mnemonic buyer: ${account.address}`);
+    return account;
+  }
+
+  if (privateKey) {
+    const normalized = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+    const account = privateKeyToAccount(normalized as `0x${string}`);
+    console.log(`[buyer] Local private-key buyer: ${account.address}`);
+    return account;
+  }
+
+  throw new Error("No local buyer credentials (MNEMONIC_PHRASE or EOA_PRIVATE_KEY).");
+}
+
+export async function createCanonicalLegacyBuyer(networkId: AgentKitNetworkId = "base-mainnet") {
+  const credentials = resolveCdpCredentials();
+  const ownerProvider = await CdpEvmWalletProvider.configureWithWallet({
+    apiKeyId: credentials.apiKeyId,
+    apiKeySecret: credentials.apiKeySecret,
+    walletSecret: credentials.walletSecret,
+    networkId,
+    rpcUrl: RPC_URLS[networkId],
+    address: CANONICAL_LEGACY_ADDRESS,
+  });
+  console.log(`[buyer] Canonical legacy wallet: ${ownerProvider.getAddress()}`);
+  return { ownerProvider };
+}
+
 export async function createMainnetPaymasterBuyer(minOwnerUsdc = 25_000n) {
   const walletProvider = await createSmartWalletBuyer("base-mainnet");
   const exported = await walletProvider.exportWallet();

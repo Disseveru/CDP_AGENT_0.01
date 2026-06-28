@@ -11,6 +11,7 @@
     "smoke-test": "tsx scripts/smoke-test.ts",
     "paid-test": "tsx scripts/paid-client-test.ts",
     "paid-test:mainnet": "tsx scripts/mainnet-paid-test.ts",
+    "bazaar-settle": "tsx scripts/production-bazaar-settle.ts",
     "sse-test": "tsx scripts/sse-test.ts",
     "test": "OPERATOR_SMS_NUMBER=+15555550100 node --import tsx --test src/wallet.test.ts src/store.test.ts src/services.test.ts src/storage/file.test.ts src/http-safety.test.ts src/deploy-env.test.ts src/captcha/captcha.test.ts",
     "migrate": "tsx src/migrate.ts"

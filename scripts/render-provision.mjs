@@ -125,6 +125,12 @@ async function main() {
     changes.push("NETWORK=base");
   }
 
+  const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+  if (!vars.FACILITATOR_URL?.trim()) {
+    vars.FACILITATOR_URL = CDP_FACILITATOR_URL;
+    changes.push(`FACILITATOR_URL=${CDP_FACILITATOR_URL}`);
+  }
+
   if (!vars.SMTP_HOST?.trim()) {
     vars.SMTP_HOST = "smtp.gmail.com";
     changes.push("SMTP_HOST=smtp.gmail.com");

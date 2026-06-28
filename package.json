@@ -25,6 +25,7 @@
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "render:diagnose": "node scripts/render-diagnose.mjs",
     "render:provision": "node scripts/render-provision.mjs",
+    "render:bazaar-verify": "node scripts/render-bazaar-verify.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
     "railway:provision-notifications": "node scripts/railway-provision-notifications.mjs",
     "captcha:setup": "node scripts/captcha-hitl-setup.mjs",
