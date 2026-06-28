@@ -113,9 +113,9 @@ export async function getEnvVars(serviceId) {
  * Pass the full merged map.
  */
 export async function putEnvVars(serviceId, vars) {
-  const body = Object.entries(vars).map(([key, value]) => ({
-    envVar: { key, value: String(value) },
-  }));
+  const body = Object.entries(vars)
+    .filter(([key]) => key?.trim())
+    .map(([key, value]) => ({ key, value: String(value) }));
   return renderFetch(`/services/${serviceId}/env-vars`, {
     method: "PUT",
     body: JSON.stringify(body),
