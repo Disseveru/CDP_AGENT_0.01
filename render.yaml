@@ -1,0 +1,42 @@
+# AgentWire on Render (free tier friendly).
+# Connect this repo in Render → New → Blueprint → paste this file, or use the manual steps in docs/RENDER-DEPLOY.md
+#
+# Before first deploy, set secret env vars in the Render dashboard (CDP keys, DATABASE_URL, Gmail SMTP).
+# Optional: Upstash Redis free tier → REDIS_URL (enables CAPTCHA human-in-the-loop).
+
+services:
+  - type: web
+    name: agentwire
+    runtime: node
+    rootDir: gas-oracle-mcp
+    plan: free
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: node dist/migrate.js && node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NETWORK
+        value: base
+      - key: STORAGE_BACKEND
+        value: postgres
+      - key: CDP_API_KEY
+        sync: false
+      - key: CDP_PRIVATE_KEY
+        sync: false
+      - key: CDP_WALLET_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPERATOR_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MCP_API_KEY
+        sync: false
