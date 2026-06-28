@@ -1,6 +1,7 @@
 import { Redis } from "ioredis";
 
 import { CONFIG } from "./config.js";
+import { isManagedProductionDeploy } from "./deploy-env.js";
 
 let client: Redis | null = null;
 
@@ -54,7 +55,7 @@ export async function allowRateLimitedRequest(
 ): Promise<boolean> {
   const redis = getRedis();
   if (!redis) {
-    if (process.env.RAILWAY_ENVIRONMENT === "production") {
+    if (isManagedProductionDeploy()) {
       console.warn(`[redis] Rate limit unavailable in production (${category}), denying request`);
       return false;
     }
@@ -73,6 +74,10 @@ export async function allowRateLimitedRequest(
     }
     return count <= limit;
   } catch (error) {
+    if (isManagedProductionDeploy()) {
+      console.warn(`[redis] Rate limit check failed in production (${category}), denying request:`, error);
+      return false;
+    }
     console.warn(`[redis] Rate limit check failed (${category}), allowing request:`, error);
     return true;
   }

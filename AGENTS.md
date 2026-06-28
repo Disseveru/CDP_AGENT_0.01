@@ -79,6 +79,26 @@ This repo also includes the Coinbase [agentic-wallet](https://github.com/coinbas
 
 - `gas-oracle-mcp/`: AgentWire MCP, an x402-paid MCP server (TypeScript) that sells webhook inbox relay + real web fetch for autonomous agents (USDC micro-payments via a CDP AgentKit wallet). Install with `npm install --legacy-peer-deps` (plain `npm install` can hang resolving the AgentKit dependency graph). Run with `npm start`, verify with `npm run smoke-test` (free) and `npm run paid-test` (settles real testnet USDC payments via the CDP facilitator; auto-funds a local buyer wallet from the CDP faucet). Uses the same CDP env vars as the root project. Facilitator defaults to `https://api.cdp.coinbase.com/platform/v2/x402` per the CDP sellers quickstart.
 
+### AgentWire on Render (production)
+
+| Item | Value |
+|---|---|
+| Public URL | `https://cdp-agent-0-01.onrender.com` (or your Render service URL) |
+| Network | **Base mainnet** (`NETWORK=base`, chain `eip155:8453`) |
+| Health / ready | `/health`, `/ready` |
+| MCP endpoint | `{PUBLIC_URL}/mcp` and `{PUBLIC_URL}/sse` (requires `MCP_API_KEY` on Render) |
+
+**Render API access from cloud agents:** `RENDER_API_KEY` (injected in Cursor secrets) supports listing services, reading env var names, setting env vars, and triggering deploys.
+
+```bash
+RENDER_API_KEY=... npm run render:diagnose -- https://cdp-agent-0-01.onrender.com
+RENDER_API_KEY=... npm run render:provision -- --redeploy
+npm run setup:cursor-mcp -- https://cdp-agent-0-01.onrender.com
+npm run verify:cursor-mcp
+```
+
+Deploy guide: `docs/RENDER-DEPLOY.md`. Blueprint: `render.yaml` at repo root.
+
 ### AgentWire on Railway (production)
 
 | Item | Value |

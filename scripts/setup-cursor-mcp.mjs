@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * One-command Cursor MCP setup for AgentWire on Railway.
+ * One-command Cursor MCP setup for AgentWire (Railway or Render).
  *
  * Usage:
  *   npm run setup:cursor-mcp
+ *   npm run setup:cursor-mcp -- https://your-app.onrender.com
  *   npm run setup:cursor-mcp -- https://your-app.up.railway.app
  *
  * Writes ~/.cursor/mcp.json (your personal Cursor config, not committed to git).
@@ -25,7 +26,7 @@ const secretsPath = join(repoRoot, ".cursor", "mcp-setup.secrets.json");
 function normalizeUrl(input) {
   const trimmed = input.trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(trimmed)) {
-    throw new Error(`Invalid URL "${input}". Use https://your-app.up.railway.app`);
+    throw new Error(`Invalid URL "${input}". Use https://your-app.onrender.com or https://your-app.up.railway.app`);
   }
   return trimmed;
 }
@@ -44,15 +45,25 @@ function writeJson(path, data) {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-async function resolveRailwayUrl(argvUrl) {
+async function resolvePublicUrl(argvUrl) {
   if (argvUrl) return normalizeUrl(argvUrl);
 
-  const envUrl = process.env.GAS_ORACLE_MCP_URL?.trim();
+  const envUrl = process.env.GAS_ORACLE_MCP_URL?.trim() || process.env.RENDER_URL?.trim() || process.env.PUBLIC_URL?.trim();
   if (envUrl) return normalizeUrl(envUrl);
 
-  const urlFile = join(repoRoot, ".cursor", "railway-url");
+  const secrets = readJson(secretsPath, {});
+  const secretUrl = secrets.publicUrl || secrets.renderUrl || secrets.railwayUrl;
+  if (secretUrl) return normalizeUrl(secretUrl);
+
+  const urlFile = join(repoRoot, ".cursor", "render-url");
   if (existsSync(urlFile)) {
     const fileUrl = readFileSync(urlFile, "utf8").trim();
+    if (fileUrl) return normalizeUrl(fileUrl);
+  }
+
+  const railwayFile = join(repoRoot, ".cursor", "railway-url");
+  if (existsSync(railwayFile)) {
+    const fileUrl = readFileSync(railwayFile, "utf8").trim();
     if (fileUrl) return normalizeUrl(fileUrl);
   }
 
@@ -61,26 +72,30 @@ async function resolveRailwayUrl(argvUrl) {
   console.log("AgentWire Cursor MCP setup");
   console.log("==========================");
   console.log("");
-  console.log("Paste your Railway public URL.");
-  console.log("Find it in Railway -> your AgentWire service -> Networking -> Public domain");
-  console.log("Example: https://agentwire-production.up.railway.app");
+  console.log("Paste your AgentWire public URL (Render or Railway).");
+  console.log("Example: https://cdp-agent-0-01.onrender.com");
   console.log("");
-  const answer = await rl.question("Railway URL: ");
+  const answer = await rl.question("Public URL: ");
   rl.close();
   return normalizeUrl(answer);
 }
 
+function hostingLabel(url) {
+  return url.includes("onrender.com") ? "Render" : "Railway";
+}
+
 async function main() {
   const argvUrl = process.argv[2];
-  const railwayUrl = await resolveRailwayUrl(argvUrl);
-  const apiKey = generateApiKey();
+  const publicUrl = await resolvePublicUrl(argvUrl);
+  const apiKey = readJson(secretsPath, {}).mcpApiKey || generateApiKey();
+  const host = hostingLabel(publicUrl);
 
   const projectConfig = readJson(projectMcpPath, { mcpServers: {} });
   const userConfig = readJson(userMcpPath, { mcpServers: {} });
 
   const gasOracleEntry = {
     type: "sse",
-    url: `${railwayUrl}/sse`,
+    url: `${publicUrl}/sse`,
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
@@ -94,7 +109,9 @@ async function main() {
 
   writeJson(userMcpPath, userConfig);
   writeJson(secretsPath, {
-    railwayUrl,
+    publicUrl,
+    renderUrl: publicUrl.includes("onrender.com") ? publicUrl : undefined,
+    railwayUrl: publicUrl.includes("railway.app") ? publicUrl : undefined,
     mcpApiKey: apiKey,
     createdAt: new Date().toISOString(),
   });
@@ -103,14 +120,19 @@ async function main() {
   console.log("Done. Cursor config written to:");
   console.log(`  ${userMcpPath}`);
   console.log("");
-  console.log("NEXT: add this Railway variable, then redeploy");
+  console.log(`NEXT: ensure MCP_API_KEY is set on ${host}, then redeploy`);
   console.log("------------------------------------------------");
-  console.log("Railway -> AgentWire service -> Variables -> New variable");
+  if (host === "Render") {
+    console.log("  RENDER_API_KEY=... npm run render:provision -- --redeploy");
+    console.log("Or Render dashboard → Environment → MCP_API_KEY");
+  } else {
+    console.log("Railway -> AgentWire service -> Variables -> MCP_API_KEY");
+  }
   console.log("");
   console.log(`  Name:  MCP_API_KEY`);
   console.log(`  Value: ${apiKey}`);
   console.log("");
-  console.log("After Railway finishes redeploying:");
+  console.log(`After ${host} finishes redeploying:`);
   console.log("  1. Restart Cursor completely");
   console.log("  2. Open Cursor Settings -> MCP");
   console.log("  3. Turn on gas-oracle-mcp");

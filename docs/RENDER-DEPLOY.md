@@ -84,7 +84,7 @@ SMTP_PASS=YOUR_16_CHAR_GMAIL_APP_PASSWORD
 
 Gmail app password: [Google App Passwords](https://myaccount.google.com/apppasswords) (requires 2-Step Verification).
 
-### Recommended — public URL + Cursor MCP auth
+### Required — public URL + Cursor MCP auth
 
 After Render gives you a URL like `https://agentwire-xxxx.onrender.com`, add:
 
@@ -92,6 +92,8 @@ After Render gives you a URL like `https://agentwire-xxxx.onrender.com`, add:
 PUBLIC_URL=https://agentwire-xxxx.onrender.com
 MCP_API_KEY=paste-a-long-random-secret-here
 ```
+
+`MCP_API_KEY` is **required** on Render (the server refuses to start without it). Without it, `/sse` and `/mcp` would be open to the internet.
 
 Generate a random MCP key on [random.org/strings](https://www.random.org/strings/) (32 chars) or use any long password you save in your notes.
 
@@ -144,6 +146,15 @@ npm run verify:cursor-mcp
 ```
 
 Use the same `MCP_API_KEY` you set in Render.
+
+**Automated setup (when `RENDER_API_KEY` is in Cursor secrets):**
+
+```bash
+RENDER_API_KEY=... npm run render:provision -- --redeploy
+npm run render:diagnose -- https://YOUR-SERVICE.onrender.com
+```
+
+`render:provision` generates `MCP_API_KEY` if missing, sets `PUBLIC_URL`, and triggers a redeploy.
 
 ---
 
