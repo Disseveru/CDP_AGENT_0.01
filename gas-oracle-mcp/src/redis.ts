@@ -73,6 +73,10 @@ export async function allowRateLimitedRequest(
     }
     return count <= limit;
   } catch (error) {
+    if (process.env.RAILWAY_ENVIRONMENT === "production") {
+      console.warn(`[redis] Rate limit check failed (${category}), denying request:`, error);
+      return false;
+    }
     console.warn(`[redis] Rate limit check failed (${category}), allowing request:`, error);
     return true;
   }
