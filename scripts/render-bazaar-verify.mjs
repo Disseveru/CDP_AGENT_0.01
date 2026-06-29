@@ -44,6 +44,26 @@ function decodePaymentRequired(header) {
   }
 }
 
+async function validateBazaarExtension(bazaar, label) {
+  const tsxPath = join(repoRoot, "gas-oracle-mcp", "node_modules", ".bin", "tsx");
+  const result = spawnSync(
+    tsxPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { validateDiscoveryExtensionSpec } from "@x402/extensions/bazaar";
+       const ext = ${JSON.stringify(bazaar)};
+       const v = validateDiscoveryExtensionSpec(ext);
+       if (!v.valid) { console.error(JSON.stringify(v.errors)); process.exit(1); }
+       console.log("ok");`,
+    ],
+    { cwd: join(repoRoot, "gas-oracle-mcp"), encoding: "utf8" },
+  );
+  if (result.status !== 0) {
+    throw new Error(`${label} failed Bazaar spec validation: ${result.stderr || result.stdout}`);
+  }
+}
+
 async function check(name, fn) {
   try {
     await fn();
@@ -68,11 +88,22 @@ async function main() {
   const results = [];
 
   results.push(
-    await check("CDP facilitator in discovery challenge", async () => {
+    await check("GET / returns 402 (not 401/403) for unpaid buyers", async () => {
       const res = await fetch(`${targetUrl}/`, { signal: AbortSignal.timeout(60_000) });
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `Auth runs before x402 on GET / (${res.status}). Buyers cannot discover this endpoint.`,
+        );
+      }
       if (res.status !== 402) {
         throw new Error(`Expected 402, got ${res.status}`);
       }
+    }),
+  );
+
+  results.push(
+    await check("CDP facilitator in discovery challenge", async () => {
+      const res = await fetch(`${targetUrl}/`, { signal: AbortSignal.timeout(60_000) });
       const paymentRequired = decodePaymentRequired(res.headers.get("payment-required"));
       const example = paymentRequired?.extensions?.bazaar?.info?.output?.example;
       const exampleFacilitator = example?.facilitator;
@@ -85,15 +116,36 @@ async function main() {
   );
 
   results.push(
+    await check("x402 v2 PaymentRequired envelope (wizard shape)", async () => {
+      const res = await fetch(`${targetUrl}/`, { signal: AbortSignal.timeout(60_000) });
+      const paymentRequired = decodePaymentRequired(res.headers.get("payment-required"));
+      if (!paymentRequired) throw new Error("Missing payment-required header");
+      if (paymentRequired.x402Version !== 2) {
+        throw new Error(`Expected x402Version 2, got ${paymentRequired.x402Version}`);
+      }
+      if (!paymentRequired.error) throw new Error("Missing error field on PaymentRequired");
+      if (!paymentRequired.resource?.url) throw new Error("Missing resource.url");
+      if (!paymentRequired.resource?.mimeType) throw new Error("Missing resource.mimeType");
+      const accept = paymentRequired.accepts?.[0];
+      if (!accept) throw new Error("Missing accepts[0]");
+      if (Number(accept.amount) < 1000) {
+        throw new Error(`accepts[0].amount must be >= 1000 atomic units, got ${accept.amount}`);
+      }
+      if (!accept.payTo) throw new Error("Missing accepts[0].payTo");
+      if (!accept.network?.includes("8453")) {
+        throw new Error(`Expected Base mainnet network, got ${accept.network}`);
+      }
+    }),
+  );
+
+  results.push(
     await check("Bazaar discovery extension on GET /", async () => {
       const res = await fetch(`${targetUrl}/`, { signal: AbortSignal.timeout(60_000) });
       const paymentRequired = decodePaymentRequired(res.headers.get("payment-required"));
       if (!paymentRequired?.extensions?.bazaar) {
         throw new Error("Missing extensions.bazaar on discovery PaymentRequired");
       }
-      if (!paymentRequired?.resource?.url) {
-        throw new Error("Missing paymentPayload.resource.url in PaymentRequired");
-      }
+      await validateBazaarExtension(paymentRequired.extensions.bazaar, "GET /");
       if (!paymentRequired.resource.url.startsWith(targetUrl)) {
         throw new Error(
           `Resource URL mismatch: ${paymentRequired.resource.url} vs ${targetUrl}/`,
@@ -177,7 +229,7 @@ async function main() {
   };
   const settle = spawnSync(
     tsxPath,
-    ["scripts/production-bazaar-settle.ts"],
+    ["scripts/production-bazaar-settle.ts", "--mcp"],
     {
       cwd: join(repoRoot, "gas-oracle-mcp"),
       stdio: "inherit",

@@ -28,9 +28,86 @@ import {
 } from "@x402/extensions/bazaar";
 
 import { CONFIG, DEFAULT_PERMISSIONLESS_FACILITATOR } from "./config.js";
+import { isManagedProductionDeploy } from "./deploy-env.js";
 import { diagnoseCdpApiCredentials, resolveCdpApiCredentials } from "./wallet.js";
 
+/** JSON Schema draft used by Agentic Market / CDP Bazaar discovery validators. */
+export const JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema";
+
+/** Example optional query params for GET / discovery probes (wizard step 2). */
+export const DISCOVERY_QUERY_INPUT_EXAMPLE = {
+  agent_name: "ledger-bot",
+  capability: "webhook-inbox",
+} as const;
+
+const DISCOVERY_QUERY_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    agent_name: {
+      type: "string",
+      description: "Calling agent identifier for analytics and routing",
+    },
+    capability: {
+      type: "string",
+      description: "Requested AgentWire capability hint (webhook-inbox, fetch, relay)",
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+const CAPTCHA_SUBMIT_OUTPUT_SCHEMA = {
+  $schema: JSON_SCHEMA_DRAFT,
+  type: "object",
+  properties: {
+    task_id: { type: "string" },
+    status: { type: "string" },
+    solve_url: { type: "string", format: "uri" },
+    poll_token: { type: "string" },
+  },
+  required: ["task_id", "status", "solve_url"],
+} as const;
+
+export function jsonSchemaForObject(
+  properties: Record<string, unknown>,
+  required: readonly string[],
+): Record<string, unknown> {
+  return {
+    $schema: JSON_SCHEMA_DRAFT,
+    type: "object",
+    properties,
+    required: [...required],
+  };
+}
+
+/** Builds a minimal JSON Schema from a plain example object (MCP tool outputs). */
+export function schemaFromExample(example: unknown): Record<string, unknown> {
+  if (example === undefined || example === null) {
+    return { $schema: JSON_SCHEMA_DRAFT, type: "object" };
+  }
+  if (Array.isArray(example)) {
+    return { $schema: JSON_SCHEMA_DRAFT, type: "array" };
+  }
+  if (typeof example !== "object") {
+    return { $schema: JSON_SCHEMA_DRAFT, type: typeof example };
+  }
+
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const [key, value] of Object.entries(example as Record<string, unknown>)) {
+    required.push(key);
+    if (typeof value === "string") properties[key] = { type: "string" };
+    else if (typeof value === "number") properties[key] = { type: "number" };
+    else if (typeof value === "boolean") properties[key] = { type: "boolean" };
+    else if (Array.isArray(value)) properties[key] = { type: "array" };
+    else if (value && typeof value === "object") properties[key] = { type: "object" };
+    else properties[key] = {};
+  }
+  return jsonSchemaForObject(properties, required);
+}
+
 const SERVICE_CARD_OUTPUT_SCHEMA = {
+  $schema: JSON_SCHEMA_DRAFT,
+  type: "object",
   properties: {
     service: { type: "string" },
     version: { type: "string" },
@@ -169,14 +246,22 @@ export async function createResourceServer(): Promise<x402ResourceServer> {
     return await initializeResourceServer(CONFIG.facilitatorUrl, primaryClient);
   } catch (primaryError) {
     const canFallback =
-      CONFIG.usesCdpFacilitator && CONFIG.facilitatorUrl !== DEFAULT_PERMISSIONLESS_FACILITATOR;
+      CONFIG.usesCdpFacilitator &&
+      CONFIG.facilitatorUrl !== DEFAULT_PERMISSIONLESS_FACILITATOR &&
+      !isManagedProductionDeploy();
     if (!canFallback) {
+      if (isManagedProductionDeploy()) {
+        console.error(
+          "[x402] CDP facilitator failed on managed production deploy. " +
+            "Bazaar indexing requires CDP settlement — fix CDP_API_KEY / CDP_PRIVATE_KEY and redeploy.",
+        );
+      }
       throw primaryError;
     }
 
     console.warn(
       `[x402] Primary facilitator failed (${primaryError instanceof Error ? primaryError.message : String(primaryError)}); ` +
-        `retrying with ${DEFAULT_PERMISSIONLESS_FACILITATOR}`,
+        `retrying with ${DEFAULT_PERMISSIONLESS_FACILITATOR} (local dev only — not indexed in CDP Bazaar)`,
     );
 
     const fallbackClient = new HTTPFacilitatorClient({ url: DEFAULT_PERMISSIONLESS_FACILITATOR });
@@ -207,11 +292,8 @@ function rootResourceUrl(): string {
 
 export function buildDiscoveryRouteConfig(payTo: string): RouteConfig {
   const extensions = declareDiscoveryExtension({
-    input: {},
-    inputSchema: {
-      properties: {},
-      additionalProperties: false,
-    },
+    input: { ...DISCOVERY_QUERY_INPUT_EXAMPLE },
+    inputSchema: DISCOVERY_QUERY_INPUT_SCHEMA,
     output: {
       example: { ...SERVICE_CARD_OUTPUT_EXAMPLE, payTo },
       schema: SERVICE_CARD_OUTPUT_SCHEMA,
@@ -269,6 +351,7 @@ export function buildCaptchaSubmitRouteConfig(payTo: string): RouteConfig {
         status: "pending",
         solve_url: `${CONFIG.publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`,
       },
+      schema: CAPTCHA_SUBMIT_OUTPUT_SCHEMA,
     },
   });
 
@@ -337,7 +420,10 @@ export function buildDiscoveryExtension(meta: ToolDiscoveryMetadata): Record<str
     transport: "streamable-http",
     inputSchema: meta.inputSchema,
     example: meta.example,
-    output: meta.outputExample !== undefined ? { example: meta.outputExample } : undefined,
+    output:
+      meta.outputExample !== undefined
+        ? { example: meta.outputExample, schema: schemaFromExample(meta.outputExample) }
+        : undefined,
   });
 
   const validation = validateDiscoveryExtensionSpec(

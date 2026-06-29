@@ -478,7 +478,7 @@ async function handleDiscoveryRequest(
     adapter: createExpressHttpAdapter(req),
     path: req.path,
     method: req.method,
-    paymentHeader: req.get("payment-signature"),
+    paymentHeader: readPaymentHeader(req),
   };
   const paymentResult = await state.discoveryHttpServer.processHTTPRequest(requestContext);
 
@@ -548,7 +548,7 @@ async function handleCaptchaSubmitRequest(
     adapter: createExpressHttpAdapter(req),
     path: req.path,
     method: req.method,
-    paymentHeader: req.get("payment-signature") || req.get("x-payment"),
+    paymentHeader: readPaymentHeader(req),
   };
   const paymentResult = await state.discoveryHttpServer.processHTTPRequest(requestContext);
 
@@ -773,6 +773,15 @@ function isAuthorizedMcpRequest(req: Request): boolean {
   if (bearer && safeCompareSecret(bearer, CONFIG.mcpApiKey)) return true;
   if (apiKey && safeCompareSecret(apiKey, CONFIG.mcpApiKey)) return true;
   return false;
+}
+
+function readPaymentHeader(req: Request): string | undefined {
+  return (
+    req.get("payment-signature") ||
+    req.get("PAYMENT-SIGNATURE") ||
+    req.get("x-payment") ||
+    undefined
+  );
 }
 
 function requireMcpApiKey(req: Request, res: Response, next: NextFunction): void {
