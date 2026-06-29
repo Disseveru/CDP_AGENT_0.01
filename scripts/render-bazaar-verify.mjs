@@ -229,7 +229,7 @@ async function main() {
   };
   const settle = spawnSync(
     tsxPath,
-    ["scripts/production-bazaar-settle.ts", "--mcp"],
+    ["scripts/production-bazaar-settle.ts"],
     {
       cwd: join(repoRoot, "gas-oracle-mcp"),
       stdio: "inherit",
@@ -238,6 +238,21 @@ async function main() {
   );
   if (settle.status !== 0) {
     process.exit(settle.status || 1);
+  }
+
+  console.log("");
+  console.log("Settling MCP peek_inbox for mcp://tool resource indexing...");
+  const mcpSettle = spawnSync(
+    tsxPath,
+    ["scripts/production-bazaar-settle.ts", "--mcp"],
+    {
+      cwd: join(repoRoot, "gas-oracle-mcp"),
+      stdio: "inherit",
+      env: settleEnv,
+    },
+  );
+  if (mcpSettle.status !== 0) {
+    process.exit(mcpSettle.status || 1);
   }
 
   console.log("");
