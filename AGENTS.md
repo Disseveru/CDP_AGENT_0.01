@@ -4,7 +4,7 @@
 
 **Before any other work**, every agent opening this environment must:
 
-1. Run `npm run bootstrap:agent` (syncs the Agentic Market skill and checks Agentic Wallet status).
+1. Run `npm run bootstrap:agent` (syncs the Agentic Market skill, checks Agentic Wallet status, and starts the Render keepalive tmux daemon so `https://cdp-agent-0-01.onrender.com` stays awake without GitHub Actions).
 2. Read `.agents/skills/agentic-market/SKILL.md` — canonical source:
    `https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869`
 3. Follow the **CLI setup** path (Cursor Cloud Agents are shell-capable). Do not ask the user to pick CLI vs MCP.
@@ -40,6 +40,8 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 |---|---|
 | Install dependencies | `npm install` |
 | Bootstrap Agentic Market + Wallet (every agent session) | `npm run bootstrap:agent` |
+| Keep Render awake (Cursor tmux daemon) | `npm run render:keepalive:start` |
+| Check Render keepalive status | `npm run render:keepalive:status` |
 | **Run CI (Cursor — use instead of GitHub Actions)** | `npm run ci` |
 | Install agentic-wallet skill (Cursor) | `npm run skills:install` |
 | Start interactive CLI REPL | `npm start` or `node index.js` |

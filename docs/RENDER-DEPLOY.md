@@ -199,4 +199,12 @@ RENDER_API_KEY=... npm run render:upgrade-starter
 
 Or Render dashboard → your service → **Settings** → **Instance Type** → **Starter** → Save.
 
-**Free keepalive (already in repo):** GitHub Actions workflow `.github/workflows/render-keepalive.yml` pings `/health` every 5 minutes so the free tier stays awake. Ensure **Actions** is enabled on the GitHub repo (Settings → Actions → Allow).
+**Free keepalive (Cursor Cloud — preferred):** Every agent bootstrap starts a tmux daemon that pings `/health` and `/ready` every 4 minutes. No GitHub Actions billing required.
+
+```bash
+npm run render:keepalive:start    # start tmux daemon (also runs on bootstrap:agent)
+npm run render:keepalive:status   # check last ping
+npm run render:keepalive          # one-shot wake
+```
+
+Set `RENDER_KEEPALIVE=0` to skip auto-start during bootstrap. GitHub workflow `.github/workflows/render-keepalive.yml` is **manual-only** (workflow_dispatch) as a fallback.
