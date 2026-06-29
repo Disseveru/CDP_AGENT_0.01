@@ -99,6 +99,14 @@ async function main() {
     console.warn("Wallet audit failed; run: node scripts/cdp-wallet-audit.mjs");
   }
 
+  printSection("5. Render keepalive (Cursor — not GitHub Actions)");
+  const keepalive = run(process.execPath, ["scripts/start-render-keepalive.mjs"]);
+  process.stdout.write(keepalive.stdout || "");
+  process.stderr.write(keepalive.stderr || "");
+  if (keepalive.status !== 0) {
+    console.warn("Render keepalive did not start; run: npm run render:keepalive:start");
+  }
+
   if (walletReady) {
     console.log("Wallet ready. Discover services with:");
     console.log('  curl -sS "https://api.agentic.market/v1/services/"');

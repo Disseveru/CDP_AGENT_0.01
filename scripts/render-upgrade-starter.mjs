@@ -52,8 +52,8 @@ async function main() {
       console.log(`  3. Open ${service.dashboardUrl || "https://dashboard.render.com"}`);
       console.log("  4. Settings → Instance Type → Starter → Save");
       console.log("");
-      console.log("Free alternative: GitHub Actions keepalive runs every 5 minutes");
-      console.log("  (.github/workflows/render-keepalive.yml — already in this repo)");
+      console.log("Free alternative: Cursor keepalive daemon (no GitHub Actions needed)");
+      console.log("  npm run render:keepalive:start");
       process.exit(1);
     }
     throw error;

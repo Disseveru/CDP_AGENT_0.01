@@ -1,14 +1,9 @@
-# Keep AgentWire on Render awake (free tier spins down after ~15 min idle).
-# Pings /health every 5 minutes so cold starts are rare. Public repos: unlimited Actions minutes.
-#
-# For true 24/7 with zero spin-down, upgrade the Render instance to Starter ($7/mo)
-# in the dashboard or run: npm run render:upgrade-starter
-name: Render keepalive
+# DEPRECATED for scheduled runs — GitHub Actions billing may suspend cron jobs.
+# Primary keepalive runs in Cursor Cloud via tmux (see npm run render:keepalive:start).
+# This workflow remains for optional manual wake only.
+name: Render keepalive (manual)
 
 on:
-  schedule:
-    # Every 5 minutes (GitHub cron is best-effort; still beats 15-min idle cutoff).
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
