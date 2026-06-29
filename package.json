@@ -26,6 +26,8 @@
     "render:diagnose": "node scripts/render-diagnose.mjs",
     "render:provision": "node scripts/render-provision.mjs",
     "render:bazaar-verify": "node scripts/render-bazaar-verify.mjs",
+    "render:keepalive": "node scripts/render-keepalive.mjs",
+    "render:upgrade-starter": "node scripts/render-upgrade-starter.mjs",
     "railway:provision": "node scripts/railway-provision.mjs",
     "railway:provision-notifications": "node scripts/railway-provision-notifications.mjs",
     "captcha:setup": "node scripts/captcha-hitl-setup.mjs",

@@ -191,4 +191,12 @@ Free tools over MCP: `ping`, `create_inbox`. Paid tools need x402 USDC via Agent
 | Gmail SMTP | $0 |
 | **Total** | **$0/month** |
 
-When you can afford it, upgrade Render to a paid instance ($7/mo) to avoid cold starts.
+When you can afford it, upgrade Render to a paid instance ($7/mo) to avoid cold starts:
+
+```bash
+RENDER_API_KEY=... npm run render:upgrade-starter
+```
+
+Or Render dashboard → your service → **Settings** → **Instance Type** → **Starter** → Save.
+
+**Free keepalive (already in repo):** GitHub Actions workflow `.github/workflows/render-keepalive.yml` pings `/health` every 5 minutes so the free tier stays awake. Ensure **Actions** is enabled on the GitHub repo (Settings → Actions → Allow).

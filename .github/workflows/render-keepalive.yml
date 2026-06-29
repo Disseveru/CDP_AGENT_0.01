@@ -1,0 +1,41 @@
+# Keep AgentWire on Render awake (free tier spins down after ~15 min idle).
+# Pings /health every 5 minutes so cold starts are rare. Public repos: unlimited Actions minutes.
+#
+# For true 24/7 with zero spin-down, upgrade the Render instance to Starter ($7/mo)
+# in the dashboard or run: npm run render:upgrade-starter
+name: Render keepalive
+
+on:
+  schedule:
+    # Every 5 minutes (GitHub cron is best-effort; still beats 15-min idle cutoff).
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: render-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Wake AgentWire on Render
+        env:
+          RENDER_URL: https://cdp-agent-0-01.onrender.com
+        run: |
+          set -euo pipefail
+          echo "Pinging ${RENDER_URL} at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          for path in /health /ready; do
+            code=$(curl -sS -o /tmp/render-body.txt -w "%{http_code}" \
+              --connect-timeout 30 --max-time 120 \
+              "${RENDER_URL}${path}" || echo "000")
+            echo "${path}: HTTP ${code}"
+            if [ "${code}" = "000" ]; then
+              echo "Request failed for ${path}"
+              exit 1
+            fi
+          done
+
+          echo "Render service is reachable."
