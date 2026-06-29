@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import type { InboxEvent } from "./types.js";
 
 const MAX_EVENTS_PER_INBOX = 200;
 const EVENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INBOX_ID_PATTERN = /^[a-f0-9]{24}$/;
+
+type Queryable = Pick<Pool, "query">;
 
 export class PostgresStorage {
   constructor(private readonly pool: Pool) {}
@@ -45,48 +47,50 @@ export class PostgresStorage {
     inboxId: string,
     event: Omit<InboxEvent, "id" | "receivedAt">,
   ): Promise<InboxEvent> {
-    this.assertValidInboxId(inboxId);
-    const exists = await this.pool.query(
-      "SELECT 1 FROM agentwire_inboxes WHERE inbox_id = $1",
-      [inboxId],
-    );
-    if (exists.rowCount === 0) {
-      throw new Error(`Unknown inbox "${inboxId}"`);
-    }
-
-    const full: InboxEvent = {
-      id: crypto.randomBytes(8).toString("hex"),
-      receivedAt: new Date().toISOString(),
-      ...event,
-    };
-
-    await this.pool.query(
-      `INSERT INTO agentwire_inbox_events
-         (id, inbox_id, received_at, method, headers, query, body)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)`,
-      [
-        full.id,
+    return this.withInboxLock(inboxId, async (client) => {
+      const exists = await client.query("SELECT 1 FROM agentwire_inboxes WHERE inbox_id = $1", [
         inboxId,
-        full.receivedAt,
-        full.method,
-        JSON.stringify(full.headers),
-        JSON.stringify(full.query),
-        JSON.stringify(full.body),
-      ],
-    );
+      ]);
+      if (exists.rowCount === 0) {
+        throw new Error(`Unknown inbox "${inboxId}"`);
+      }
 
-    await this.pruneInbox(inboxId);
-    return full;
+      const full: InboxEvent = {
+        id: crypto.randomBytes(8).toString("hex"),
+        receivedAt: new Date().toISOString(),
+        ...event,
+      };
+
+      await client.query(
+        `INSERT INTO agentwire_inbox_events
+           (id, inbox_id, received_at, method, headers, query, body)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)`,
+        [
+          full.id,
+          inboxId,
+          full.receivedAt,
+          full.method,
+          JSON.stringify(full.headers),
+          JSON.stringify(full.query),
+          JSON.stringify(full.body),
+        ],
+      );
+
+      await this.pruneInbox(client, inboxId);
+      return full;
+    });
   }
 
   async drainInbox(
     inboxId: string,
     secret: string,
   ): Promise<{ drained: number; events: InboxEvent[] }> {
-    await this.requireSecret(inboxId, secret);
-    const events = await this.loadEvents(inboxId);
-    await this.pool.query("DELETE FROM agentwire_inbox_events WHERE inbox_id = $1", [inboxId]);
-    return { drained: events.length, events };
+    return this.withInboxLock(inboxId, async (client) => {
+      await this.requireSecret(client, inboxId, secret);
+      const events = await this.loadEvents(client, inboxId);
+      await client.query("DELETE FROM agentwire_inbox_events WHERE inbox_id = $1", [inboxId]);
+      return { drained: events.length, events };
+    });
   }
 
   async removeInboxEventsByIds(
@@ -94,28 +98,33 @@ export class PostgresStorage {
     secret: string,
     eventIds: string[],
   ): Promise<{ removed: number }> {
-    await this.requireSecret(inboxId, secret);
     if (eventIds.length === 0) {
       return { removed: 0 };
     }
 
-    const result = await this.pool.query(
-      `DELETE FROM agentwire_inbox_events
-       WHERE inbox_id = $1 AND id = ANY($2::text[])`,
-      [inboxId, eventIds],
-    );
-    await this.pruneInbox(inboxId);
-    return { removed: result.rowCount ?? 0 };
+    return this.withInboxLock(inboxId, async (client) => {
+      await this.requireSecret(client, inboxId, secret);
+
+      const result = await client.query(
+        `DELETE FROM agentwire_inbox_events
+         WHERE inbox_id = $1 AND id = ANY($2::text[])`,
+        [inboxId, eventIds],
+      );
+      await this.pruneInbox(client, inboxId);
+      return { removed: result.rowCount ?? 0 };
+    });
   }
 
   async peekInbox(
     inboxId: string,
     secret: string,
   ): Promise<{ pending: number; events: InboxEvent[] }> {
-    await this.requireSecret(inboxId, secret);
-    await this.pruneInbox(inboxId);
-    const events = await this.loadEvents(inboxId);
-    return { pending: events.length, events };
+    return this.withInboxLock(inboxId, async (client) => {
+      await this.requireSecret(client, inboxId, secret);
+      await this.pruneInbox(client, inboxId);
+      const events = await this.loadEvents(client, inboxId);
+      return { pending: events.length, events };
+    });
   }
 
   async inboxExists(inboxId: string): Promise<boolean> {
@@ -138,21 +147,43 @@ export class PostgresStorage {
     oldestEventAt: string | null;
     newestEventAt: string | null;
   }> {
-    await this.requireSecret(inboxId, secret);
-    await this.pruneInbox(inboxId);
+    return this.withInboxLock(inboxId, async (client) => {
+      await this.requireSecret(client, inboxId, secret);
+      await this.pruneInbox(client, inboxId);
 
-    const inbox = await this.pool.query<{ created_at: string }>(
-      "SELECT created_at FROM agentwire_inboxes WHERE inbox_id = $1",
-      [inboxId],
-    );
-    const events = await this.loadEvents(inboxId);
+      const inbox = await client.query<{ created_at: string }>(
+        "SELECT created_at FROM agentwire_inboxes WHERE inbox_id = $1",
+        [inboxId],
+      );
+      const events = await this.loadEvents(client, inboxId);
 
-    return {
-      pending: events.length,
-      createdAt: inbox.rows[0].created_at,
-      oldestEventAt: events[0]?.receivedAt ?? null,
-      newestEventAt: events.at(-1)?.receivedAt ?? null,
-    };
+      return {
+        pending: events.length,
+        createdAt: inbox.rows[0].created_at,
+        oldestEventAt: events[0]?.receivedAt ?? null,
+        newestEventAt: events.at(-1)?.receivedAt ?? null,
+      };
+    });
+  }
+
+  private async withInboxLock<T>(
+    inboxId: string,
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    this.assertValidInboxId(inboxId);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1::text))", [inboxId]);
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private assertValidInboxId(inboxId: string): void {
@@ -161,9 +192,13 @@ export class PostgresStorage {
     }
   }
 
-  private async requireSecret(inboxId: string, secret: string): Promise<void> {
+  private async requireSecret(
+    client: Queryable,
+    inboxId: string,
+    secret: string,
+  ): Promise<void> {
     this.assertValidInboxId(inboxId);
-    const result = await this.pool.query<{ secret: string }>(
+    const result = await client.query<{ secret: string }>(
       "SELECT secret FROM agentwire_inboxes WHERE inbox_id = $1",
       [inboxId],
     );
@@ -175,8 +210,8 @@ export class PostgresStorage {
     }
   }
 
-  private async loadEvents(inboxId: string): Promise<InboxEvent[]> {
-    const result = await this.pool.query<{
+  private async loadEvents(client: Queryable, inboxId: string): Promise<InboxEvent[]> {
+    const result = await client.query<{
       id: string;
       received_at: string;
       method: string;
@@ -201,14 +236,14 @@ export class PostgresStorage {
     }));
   }
 
-  private async pruneInbox(inboxId: string): Promise<void> {
+  private async pruneInbox(client: Queryable, inboxId: string): Promise<void> {
     const cutoff = new Date(Date.now() - EVENT_TTL_MS).toISOString();
-    await this.pool.query(
+    await client.query(
       "DELETE FROM agentwire_inbox_events WHERE inbox_id = $1 AND received_at < $2",
       [inboxId, cutoff],
     );
 
-    await this.pool.query(
+    await client.query(
       `DELETE FROM agentwire_inbox_events
        WHERE inbox_id = $1
          AND id IN (
