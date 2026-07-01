@@ -81,7 +81,56 @@ test("parseNotificationSettings allows fully disabled channels", () => {
   });
   assert.equal(settings.sms, null);
   assert.equal(settings.email, null);
+  assert.equal(settings.push, null);
   assert.equal(settings.operatorSmsNumber, "+17472241814");
+});
+
+test("parseNotificationSettings allows email-only production config", () => {
+  const previous = process.env.RAILWAY_ENVIRONMENT;
+  process.env.RAILWAY_ENVIRONMENT = "production";
+  try {
+    const settings = parseNotificationSettings({
+      OPERATOR_EMAIL: "ops@example.com",
+      SMTP_USER: "ops@example.com",
+      SMTP_PASS: "app-password",
+    });
+    assert.equal(settings.operatorSmsNumber, undefined);
+    assert.ok(settings.email);
+    assert.equal(settings.sms, null);
+  } finally {
+    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
+    else process.env.RAILWAY_ENVIRONMENT = previous;
+  }
+});
+
+test("parseNotificationSettings validates ntfy push configuration", () => {
+  const settings = parseNotificationSettings({
+    NTFY_TOPIC: "agentwire-captcha-alerts",
+    NTFY_SERVER: "https://ntfy.sh",
+    NTFY_TOKEN: "tk_secret",
+  });
+  assert.ok(settings.push);
+  assert.equal(settings.push.topic, "agentwire-captcha-alerts");
+  assert.equal(settings.push.server, "https://ntfy.sh");
+  assert.equal(settings.push.token, "tk_secret");
+});
+
+test("parseNotificationSettings requires a channel in production", () => {
+  const previous = process.env.RAILWAY_ENVIRONMENT;
+  process.env.RAILWAY_ENVIRONMENT = "production";
+  try {
+    assert.throws(
+      () => parseNotificationSettings({}),
+      (error: unknown) => {
+        assert.ok(error instanceof NotificationConfigError);
+        assert.match(error.message, /notification channel/i);
+        return true;
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
+    else process.env.RAILWAY_ENVIRONMENT = previous;
+  }
 });
 
 test("parseNotificationSettings rejects partial Twilio configuration", () => {

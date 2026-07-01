@@ -3,7 +3,7 @@ import { escapeHtml } from "./html.js";
 export interface OperatorSmsConsentPageInput {
   readonly serviceName: string;
   readonly publicUrl: string;
-  readonly operatorSmsNumber: string;
+  readonly operatorSmsNumber?: string;
   readonly operatorEmail?: string;
 }
 
@@ -14,7 +14,9 @@ export interface OperatorSmsConsentPageInput {
 export function renderOperatorSmsConsentPage(input: OperatorSmsConsentPageInput): string {
   const serviceName = escapeHtml(input.serviceName);
   const publicUrl = escapeHtml(input.publicUrl);
-  const operatorSmsNumber = escapeHtml(input.operatorSmsNumber);
+  const operatorSmsNumber = input.operatorSmsNumber
+    ? escapeHtml(input.operatorSmsNumber)
+    : "the configured operator mobile number";
   const operatorEmail = input.operatorEmail ? escapeHtml(input.operatorEmail) : null;
   const contactLine = operatorEmail
     ? `<a href="mailto:${operatorEmail}">${operatorEmail}</a>`

@@ -150,6 +150,9 @@ async function main() {
     "TWILIO_FROM_NUMBER",
     "SMTP_USER",
     "SMTP_PASS",
+    "NTFY_TOPIC",
+    "NTFY_SERVER",
+    "NTFY_TOKEN",
   ]) {
     if (/PASS|TOKEN|SID/i.test(key)) {
       console.log(`${key}: ${vars[key] ? "set" : "missing"}`);
@@ -170,7 +173,10 @@ async function main() {
     console.log("  → Twilio is partially configured; set all three TWILIO_* vars or remove all.");
   }
   if (!vars.TWILIO_ACCOUNT_SID) {
-    console.log("  → SMS alerts disabled until Twilio secrets are set.");
+    console.log("  → Twilio SMS optional — toll-free verification can take days.");
+  }
+  if (!vars.SMTP_PASS && !vars.NTFY_TOPIC) {
+    console.log("  → For instant alerts without Twilio, set SMTP_PASS (Gmail) or NTFY_TOPIC (ntfy app).");
   }
 
   const tsxPath = join(repoRoot, "gas-oracle-mcp", "node_modules", ".bin", "tsx");
