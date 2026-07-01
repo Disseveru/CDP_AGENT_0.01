@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Submit or inspect Twilio toll-free verification for AgentWire operator SMS.
+ * Submit, resubmit, or inspect Twilio toll-free verification for AgentWire operator SMS.
  *
  * Requires:
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER (toll-free E.164)
@@ -8,12 +8,13 @@
  * Optional overrides:
  *   TFV_BUSINESS_NAME, TFV_BUSINESS_WEBSITE, TFV_NOTIFICATION_EMAIL
  *   TFV_CUSTOMER_PROFILE_SID, TFV_BUSINESS_TYPE (default SOLE_PROPRIETOR)
- *   TFV_OPT_IN_URL (default GitHub Pages operator consent HTML)
+ *   TFV_OPT_IN_URL, TFV_PRIVACY_POLICY_URL, TFV_TERMS_URL
  *
  * Usage:
- *   TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_FROM_NUMBER=+18... \
- *     node scripts/twilio-tollfree-verify.mjs
- *   node scripts/twilio-tollfree-verify.mjs --status
+ *   npm run twilio:tollfree-verify -- --status
+ *   npm run twilio:tollfree-verify -- --submit
+ *   npm run twilio:tollfree-verify -- --resubmit
+ *   npm run twilio:tollfree-verify -- --verify
  */
 import { parseArgs } from "node:util";
 
@@ -22,18 +23,39 @@ const API_2010 = "https://api.twilio.com/2010-04-01";
 
 const DEFAULTS = {
   publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
+  businessWebsite: "https://disseveru.github.io/CDP_AGENT_0.01/",
   operatorEmail: "er2k18@gmail.com",
   businessName: "AgentWire",
   messageVolume: "10",
-  optInUrl:
-    process.env.TFV_OPT_IN_URL?.trim() ||
-    "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html",
 };
+
+function publicUrlBase() {
+  return (process.env.PUBLIC_URL || DEFAULTS.publicUrl).replace(/\/$/, "");
+}
+
+function optInUrl() {
+  return (
+    process.env.TFV_OPT_IN_URL?.trim() || `${publicUrlBase()}/operator-sms-consent`
+  );
+}
+
+function privacyPolicyUrl() {
+  return process.env.TFV_PRIVACY_POLICY_URL?.trim() || optInUrl();
+}
+
+function termsUrl() {
+  return (
+    process.env.TFV_TERMS_URL?.trim() ||
+    "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html"
+  );
+}
 
 const { values: args } = parseArgs({
   options: {
     status: { type: "boolean", default: false },
     submit: { type: "boolean", default: false },
+    resubmit: { type: "boolean", default: false },
+    verify: { type: "boolean", default: false },
   },
   allowPositionals: true,
 });
@@ -107,23 +129,26 @@ async function findPhoneNumberSid(accountSid, authToken, e164) {
 }
 
 function buildVerificationPayload(phoneSid) {
-  const publicUrl = (process.env.PUBLIC_URL || DEFAULTS.publicUrl).replace(/\/$/, "");
-  const optInUrl = process.env.TFV_OPT_IN_URL?.trim() || DEFAULTS.optInUrl;
+  const publicUrl = publicUrlBase();
+  const consentUrl = optInUrl();
+  const businessWebsite = process.env.TFV_BUSINESS_WEBSITE?.trim() || DEFAULTS.businessWebsite;
   const sampleMessage = `⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: ${publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`;
 
   const payload = {
     TollfreePhoneNumberSid: phoneSid,
     BusinessName: process.env.TFV_BUSINESS_NAME?.trim() || DEFAULTS.businessName,
-    BusinessWebsite: process.env.TFV_BUSINESS_WEBSITE?.trim() || publicUrl,
+    BusinessWebsite: businessWebsite,
     NotificationEmail: process.env.TFV_NOTIFICATION_EMAIL?.trim() || DEFAULTS.operatorEmail,
     UseCaseCategories: ["ACCOUNT_NOTIFICATIONS", "SECURITY_ALERT"],
     UseCaseSummary:
       "AgentWire sends transactional SMS alerts to a single designated human operator when an autonomous agent requests human-in-the-loop CAPTCHA solving. No marketing or bulk messaging.",
     ProductionMessageSample: sampleMessage,
     OptInType: "WEB_FORM",
-    OptInImageUrls: [optInUrl],
+    OptInImageUrls: [consentUrl],
+    PrivacyPolicyUrl: privacyPolicyUrl(),
+    TermsAndConditionsUrl: termsUrl(),
     MessageVolume: process.env.TFV_MESSAGE_VOLUME?.trim() || DEFAULTS.messageVolume,
-    AdditionalInformation: `Operator opts in by configuring OPERATOR_SMS_NUMBER in the deployment environment. Public opt-in disclosure: ${optInUrl}`,
+    AdditionalInformation: `Operator opts in by configuring OPERATOR_SMS_NUMBER in the deployment environment. Public opt-in disclosure: ${consentUrl}. Business website: ${businessWebsite}`,
     HelpMessageSample: "Reply HELP for assistance or contact er2k18@gmail.com",
     AgeGatedContent: "false",
     BusinessType: process.env.TFV_BUSINESS_TYPE?.trim() || "SOLE_PROPRIETOR",
@@ -135,8 +160,43 @@ function buildVerificationPayload(phoneSid) {
   return payload;
 }
 
+function buildResubmitPayload() {
+  const publicUrl = publicUrlBase();
+  const consentUrl = optInUrl();
+  const businessWebsite = process.env.TFV_BUSINESS_WEBSITE?.trim() || DEFAULTS.businessWebsite;
+  const sampleMessage = `⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: ${publicUrl}/solve/550e8400-e29b-41d4-a716-446655440000`;
+
+  return {
+    EditReason:
+      "Corrected business website to public project page, production opt-in URL, and privacy policy",
+    BusinessName: process.env.TFV_BUSINESS_NAME?.trim() || DEFAULTS.businessName,
+    BusinessWebsite: businessWebsite,
+    NotificationEmail: process.env.TFV_NOTIFICATION_EMAIL?.trim() || DEFAULTS.operatorEmail,
+    UseCaseCategories: ["ACCOUNT_NOTIFICATIONS", "SECURITY_ALERT"],
+    UseCaseSummary:
+      "AgentWire sends transactional SMS alerts to a single designated human operator when an autonomous agent requests human-in-the-loop CAPTCHA solving. No marketing or bulk messaging.",
+    ProductionMessageSample: sampleMessage,
+    OptInType: "WEB_FORM",
+    OptInImageUrls: [consentUrl],
+    PrivacyPolicyUrl: privacyPolicyUrl(),
+    TermsAndConditionsUrl: termsUrl(),
+    MessageVolume: process.env.TFV_MESSAGE_VOLUME?.trim() || DEFAULTS.messageVolume,
+    AdditionalInformation: `Operator opts in by configuring OPERATOR_SMS_NUMBER. Public opt-in disclosure: ${consentUrl}. Business website: ${businessWebsite}`,
+    HelpMessageSample: "Reply HELP for assistance or contact er2k18@gmail.com",
+  };
+}
+
 async function listVerifications(accountSid, authToken) {
   return twilioGet(`${MESSAGING_API}/Tollfree/Verifications`, accountSid, authToken);
+}
+
+function formatRejection(record) {
+  if (!record.rejection_reasons?.length) {
+    return record.rejection_reason ? [record.rejection_reason] : [];
+  }
+  return record.rejection_reasons.map((reason) =>
+    typeof reason === "string" ? reason : reason.reason || JSON.stringify(reason),
+  );
 }
 
 async function main() {
@@ -161,10 +221,8 @@ async function main() {
       console.log(
         `  ${record.sid}  status=${record.status}  number=${record.tollfree_phone_number_sid}  edit_allowed=${record.edit_allowed ?? "?"}`,
       );
-      if (record.rejection_reasons?.length) {
-        for (const reason of record.rejection_reasons) {
-          console.log(`    rejection: ${reason}`);
-        }
+      for (const reason of formatRejection(record)) {
+        console.log(`    rejection: ${reason}`);
       }
     }
     console.log("");
@@ -174,13 +232,49 @@ async function main() {
   }
 
   const matching = records.find((record) => record.tollfree_phone_number_sid === phone.sid);
+
+  if (args.verify) {
+    if (matching && matching.edit_allowed && matching.status === "TWILIO_REJECTED") {
+      args.resubmit = true;
+    } else if (matching && ["PENDING_REVIEW", "IN_REVIEW", "TWILIO_APPROVED"].includes(matching.status)) {
+      console.log(`Verification already ${matching.status} for this number (${matching.sid}).`);
+      return;
+    } else {
+      args.submit = true;
+    }
+  }
+
+  if (args.resubmit) {
+    if (!matching) {
+      throw new Error("No existing verification found for this number; use --submit instead.");
+    }
+    if (!matching.edit_allowed) {
+      throw new Error(
+        `Verification ${matching.sid} is not editable (status=${matching.status}). Create a new request with --submit.`,
+      );
+    }
+
+    const result = await twilioForm(
+      `${MESSAGING_API}/Tollfree/Verifications/${matching.sid}`,
+      accountSid,
+      authToken,
+      buildResubmitPayload(),
+    );
+
+    console.log("Resubmitted toll-free verification:");
+    console.log(`  SID: ${result.sid}`);
+    console.log(`  Status: ${result.status}`);
+    console.log(`  Notification email: ${result.notification_email || DEFAULTS.operatorEmail}`);
+    return;
+  }
+
   if (matching && ["PENDING_REVIEW", "IN_REVIEW", "TWILIO_APPROVED"].includes(matching.status)) {
     console.log(`Verification already ${matching.status} for this number (${matching.sid}).`);
     if (!args.submit) return;
   }
 
   if (!args.submit && !args.status) {
-    console.log("Dry run only. Re-run with --submit to create a verification request.");
+    console.log("Dry run only. Re-run with --submit or --resubmit.");
     console.log("Payload preview:");
     console.log(JSON.stringify(buildVerificationPayload(phone.sid), null, 2));
     return;
