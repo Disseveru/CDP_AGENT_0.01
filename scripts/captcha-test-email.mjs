@@ -6,9 +6,15 @@
  *   SMTP_USER=... SMTP_PASS=... OPERATOR_EMAIL=... npm run captcha:test-email
  *   RENDER_API_KEY=... npm run captcha:test-email -- --from-render
  */
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { findService, getEnvVars, getRenderApiKey } from "./render-api.mjs";
+
+const require = createRequire(join(dirname(fileURLToPath(import.meta.url)), "..", "gas-oracle-mcp", "package.json"));
+const nodemailer = require("nodemailer");
 
 const DEFAULT_RENDER_URL = "https://cdp-agent-0-01.onrender.com";
 
@@ -60,7 +66,6 @@ async function main() {
 <p><a href="${solveUrl}">Solve here</a></p>
 <p>Target page: https://example.com/login</p>`;
 
-  const nodemailer = await import("nodemailer");
   const transport = nodemailer.createTransport({
     host: smtp.host,
     port: smtp.port,
