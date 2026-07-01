@@ -68,6 +68,9 @@ const SECRET_ENV_MAP = [
   ["OPERATOR_SMS_NUMBER", "OPERATOR_SMS_NUMBER"],
   ["OPERATOR_EMAIL", "OPERATOR_EMAIL"],
   ["SMTP_PASS", "SMTP_PASS"],
+  ["NTFY_TOPIC", "NTFY_TOPIC"],
+  ["NTFY_SERVER", "NTFY_SERVER"],
+  ["NTFY_TOKEN", "NTFY_TOKEN"],
 ];
 
 async function gql(token, query, variables) {

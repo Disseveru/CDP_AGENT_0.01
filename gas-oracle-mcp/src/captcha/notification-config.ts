@@ -50,11 +50,33 @@ const smtpChannelSchema = z.object({
 export type TwilioChannelConfig = z.infer<typeof twilioChannelSchema>;
 export type SmtpChannelConfig = z.infer<typeof smtpChannelSchema>;
 
+const ntfyTopicSchema = z
+  .string()
+  .trim()
+  .min(8, "NTFY_TOPIC must be at least 8 characters")
+  .max(64, "NTFY_TOPIC is too long")
+  .regex(/^[A-Za-z0-9_-]+$/, "NTFY_TOPIC may only contain letters, numbers, underscores, and hyphens");
+
+const ntfyServerSchema = z
+  .string()
+  .trim()
+  .url()
+  .refine((value) => value.startsWith("https://"), "NTFY_SERVER must use https");
+
+const ntfyChannelSchema = z.object({
+  server: ntfyServerSchema,
+  topic: ntfyTopicSchema,
+  token: z.string().trim().min(1).optional(),
+});
+
+export type NtfyChannelConfig = z.infer<typeof ntfyChannelSchema>;
+
 export interface NotificationSettings {
-  readonly operatorSmsNumber: string;
+  readonly operatorSmsNumber: string | undefined;
   readonly operatorEmail: string | undefined;
   readonly sms: TwilioChannelConfig | null;
   readonly email: SmtpChannelConfig | null;
+  readonly push: NtfyChannelConfig | null;
 }
 
 export class NotificationConfigError extends Error {
@@ -133,16 +155,28 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
   const operatorSmsRaw = readEnv(env, "OPERATOR_SMS_NUMBER");
   const twilioKeys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"] as const;
   const twilioConfigured = twilioKeys.some((key) => readEnv(env, key) !== undefined);
-  const requiresOperatorSms =
-    process.env.RAILWAY_ENVIRONMENT === "production" || twilioConfigured;
+  const smtpConfigured =
+    readEnv(env, "SMTP_USER") !== undefined || readEnv(env, "SMTP_PASS") !== undefined;
+  const ntfyConfigured = readEnv(env, "NTFY_TOPIC") !== undefined;
+  const isManagedProduction = process.env.RAILWAY_ENVIRONMENT === "production";
 
-  if (!operatorSmsRaw) {
-    if (requiresOperatorSms) {
-      throw new NotificationConfigError("OPERATOR_SMS_NUMBER is required", [
-        "OPERATOR_SMS_NUMBER: set the operator mobile number in E.164 format",
-      ]);
-    }
-  } else {
+  if (twilioConfigured && !operatorSmsRaw) {
+    throw new NotificationConfigError("OPERATOR_SMS_NUMBER is required when Twilio is configured", [
+      "OPERATOR_SMS_NUMBER: set the operator mobile number in E.164 format",
+    ]);
+  }
+
+  if (isManagedProduction && !twilioConfigured && !smtpConfigured && !ntfyConfigured) {
+    throw new NotificationConfigError(
+      "At least one operator notification channel is required in production",
+      [
+        "Configure Gmail SMTP (SMTP_USER + SMTP_PASS), ntfy push (NTFY_TOPIC), or Twilio SMS (TWILIO_* + OPERATOR_SMS_NUMBER)",
+      ],
+    );
+  }
+
+  let operatorSmsNumber: string | undefined;
+  if (operatorSmsRaw) {
     const operatorSms = e164PhoneSchema.safeParse(normalizeE164(operatorSmsRaw));
     if (!operatorSms.success) {
       throw new NotificationConfigError(
@@ -150,6 +184,7 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
         formatZodIssues(operatorSms.error),
       );
     }
+    operatorSmsNumber = operatorSms.data;
   }
 
   const operatorEmailRaw = readEnv(env, "OPERATOR_EMAIL");
@@ -191,15 +226,24 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
     }),
   );
 
-  const operatorSmsNumber = operatorSmsRaw
-    ? e164PhoneSchema.parse(normalizeE164(operatorSmsRaw))
-    : "+15555550100";
+  const push = parsePartialChannel(
+    "ntfy",
+    ["NTFY_TOPIC"],
+    env,
+    ntfyChannelSchema,
+    (source) => ({
+      server: readEnv(source, "NTFY_SERVER") ?? "https://ntfy.sh",
+      topic: readEnv(source, "NTFY_TOPIC"),
+      token: readEnv(source, "NTFY_TOKEN"),
+    }),
+  );
 
   return {
     operatorSmsNumber,
     operatorEmail,
     sms,
     email: smtp,
+    push,
   };
 }
 
