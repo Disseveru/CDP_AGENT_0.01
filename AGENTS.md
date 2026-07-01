@@ -207,6 +207,7 @@ State persists to `dsa_data.json` (gitignored). The client tracks per-chain `dsa
 ### Runtime notes
 
 - Wallet state persists to `wallet_data.txt` (gitignored). Delete this file to force a new wallet on the next run.
+- The CDP account already holds many wallets, so the default smart-wallet and legacy-mnemonic paths can hit `429 ResourceExhaustedError` for `CreateWallet`. To run the root CLI without minting a new wallet, reuse an existing funded EVM account: write its address to `wallet_data.txt` (e.g. `{"address":"0x..."}`; list addresses with `node scripts/cdp-wallet-audit.mjs`) and launch with `USE_EOA_WALLET=1 BASE_PAYMASTER=0 npm start`.
 - By default the app uses `CdpSmartWalletProvider` with CDP Base Paymaster for sponsored transactions on Base Sepolia. Set `USE_EOA_WALLET=1` to use `CdpEvmWalletProvider` (CDP v2) instead, or `BASE_PAYMASTER=0` to disable paymaster.
 - The paymaster URL is auto-resolved from CDP API credentials, or set `PAYMASTER_URL` to override.
 - Legacy `LegacyCdpWalletProvider` remains available for `deploy_token`; use `USE_LEGACY_WALLET=1` to force this mode.
