@@ -255,6 +255,41 @@ async function main() {
     process.exit(mcpSettle.status || 1);
   }
 
+  if (process.argv.includes("--all-mcp")) {
+    console.log("");
+    console.log("Settling all paid MCP tools for Bazaar indexing...");
+    const allMcp = spawnSync(
+      tsxPath,
+      ["scripts/production-bazaar-settle.ts", "--all-mcp"],
+      {
+        cwd: join(repoRoot, "gas-oracle-mcp"),
+        stdio: "inherit",
+        env: settleEnv,
+      },
+    );
+    if (allMcp.status !== 0) {
+      process.exit(allMcp.status || 1);
+    }
+
+    console.log("");
+    console.log("Settling HTTP CAPTCHA submit endpoint...");
+    const captchaSettle = spawnSync(
+      tsxPath,
+      ["scripts/production-bazaar-settle.ts", "--http-captcha"],
+      {
+        cwd: join(repoRoot, "gas-oracle-mcp"),
+        stdio: "inherit",
+        env: {
+          ...settleEnv,
+          OPERATOR_SMS_NUMBER: process.env.OPERATOR_SMS_NUMBER || "+17472241814",
+        },
+      },
+    );
+    if (captchaSettle.status !== 0) {
+      process.exit(captchaSettle.status || 1);
+    }
+  }
+
   console.log("");
   console.log("Searching x402 Bazaar for AgentWire resources...");
   const search = spawnSync(
@@ -266,13 +301,13 @@ async function main() {
     try {
       const hits = JSON.parse(search.stdout);
       const matches = Array.isArray(hits)
-        ? hits.filter((item) => JSON.stringify(item).includes("onrender.com"))
+        ? hits.filter((item) => JSON.stringify(item).includes(targetUrl.replace(/^https:\/\//, "")))
         : [];
       if (matches.length) {
-        console.log(`Found ${matches.length} Bazaar hit(s) referencing this host.`);
+        console.log(`Found ${matches.length} Bazaar hit(s) referencing ${targetUrl}.`);
       } else {
         console.log(
-          "No onrender.com hits yet — CDP indexing can take a few minutes after the first settlement.",
+          `No hits for ${targetUrl} yet — CDP indexing can take a few minutes after the first settlement.`,
         );
       }
     } catch {
