@@ -71,7 +71,17 @@ console.log(JSON.stringify({
     throw new Error(`Local CDP credentials invalid or missing: ${detail}`);
   }
 
-  return JSON.parse(result.stdout.trim());
+  const jsonLine = result.stdout
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{"))
+    .at(-1);
+  if (!jsonLine) {
+    throw new Error(`Could not parse local CDP credential output: ${result.stdout}`);
+  }
+
+  return JSON.parse(jsonLine);
 }
 
 async function main() {
