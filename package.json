@@ -26,6 +26,7 @@
     "render:diagnose": "node scripts/render-diagnose.mjs",
     "render:provision": "node scripts/render-provision.mjs",
     "render:provision-notifications": "node scripts/render-provision-notifications.mjs",
+    "render:fix-cdp": "node scripts/render-fix-cdp.mjs",
     "render:bazaar-verify": "node scripts/render-bazaar-verify.mjs",
     "render:keepalive": "node scripts/render-keepalive.mjs",
     "render:keepalive:daemon": "node scripts/render-keepalive-daemon.mjs",
