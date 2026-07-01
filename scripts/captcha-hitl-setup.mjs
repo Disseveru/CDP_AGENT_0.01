@@ -23,7 +23,7 @@ const repoRoot = join(__dirname, "..");
 const DEFAULTS = {
   publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
   operatorSms: process.env.OPERATOR_SMS_NUMBER?.trim(),
-  consentPageUrl: "https://disseveru.github.io/CDP_AGENT_0.01/operator-sms-consent.html",
+  consentPageUrl: "https://gas-oracle-mcp-production.up.railway.app/operator-sms-consent",
 };
 
 const { values: args } = parseArgs({
@@ -132,7 +132,7 @@ async function main() {
   }
 
   if (args["verify-tfn"]) {
-    run("Toll-free verification submit", "twilio-tollfree-verify.mjs", ["--submit"]);
+    run("Toll-free verification", "twilio-tollfree-verify.mjs", ["--verify"]);
   } else {
     console.log("\nSkipping toll-free verification (pass --verify-tfn to submit).");
   }
