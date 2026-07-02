@@ -32,6 +32,7 @@ import {
   parseSubmitBody,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
+import { parseCaptchaTaskResponse } from "./captcha/mcp-response.js";
 import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
 import { notifyOperator } from "./captcha/notifications.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
@@ -289,13 +290,38 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       if (!isCaptchaStorageConfigured()) {
         throw new Error("CAPTCHA storage unavailable: REDIS_URL must be configured on Railway");
       }
-      // Validate only — task creation, operator alert, and polling run after x402
-      // settlement succeeds (see request_human_captcha_bypass wrapper below).
-      return parseSubmitBody({
+      // Wait before x402 settlement so handler timeouts cancel payment instead of
+      // charging first (see request_human_captcha_bypass wrapper for post-settlement rollback).
+      parseSubmitBody({
         sitekey: String(args.sitekey),
         pageurl: String(args.pageurl),
         captcha_type: args.captcha_type,
       });
+      const created = await createCaptchaTask(
+        {
+          sitekey: String(args.sitekey),
+          pageurl: String(args.pageurl),
+          captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
+        },
+        { notify: false },
+      );
+      void notifyOperator({
+        taskId: created.task_id,
+        solveUrl: created.solve_url,
+        captchaType: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
+        pageUrl: String(args.pageurl),
+      }).catch((error) => {
+        console.error("[captcha] Operator alert failed:", error);
+      });
+      const solved = await waitForCaptchaSolution(created.task_id, created.poll_token);
+      return {
+        task_id: solved.task_id,
+        status: solved.status,
+        solution_token: solved.solution_token,
+        solve_url: created.solve_url,
+        poll_token: created.poll_token,
+        completed_at: solved.completed_at,
+      };
     },
   },
 ];
@@ -700,101 +726,12 @@ function buildMcpServer(state: RuntimeState): McpServer {
           | { success?: boolean; errorReason?: string }
           | undefined;
 
-        if (definition.name === "request_human_captcha_bypass") {
-          if (settlement?.success === false) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: settlement.errorReason || "Payment settlement failed",
-                    settlement,
-                  }),
-                },
-              ],
-            };
-          }
-
-          // Task is created only after settlement succeeds so a thrown settlement
-          // (createSettlementFailedResult) cannot leave orphan Redis tasks.
-          if (settlement?.success !== true) {
-            return result;
-          }
-
-          let created;
-          try {
-            created = await createCaptchaTask(
-              {
-                sitekey: String(args.sitekey),
-                pageurl: String(args.pageurl),
-                captcha_type: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
-              },
-              { notify: false },
-            );
-          } catch (error) {
-            console.error("[captcha] Task creation failed after MCP settlement:", error);
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: error instanceof Error ? error.message : String(error),
-                  }),
-                },
-              ],
-              _meta: result._meta,
-            };
-          }
-
-          void notifyOperator({
-            taskId: created.task_id,
-            solveUrl: created.solve_url,
-            captchaType: args.captcha_type as "recaptcha" | "hcaptcha" | "turnstile",
-            pageUrl: String(args.pageurl),
-          }).catch((error) => {
-            console.error("[captcha] Operator alert failed:", error);
-          });
-
-          try {
-            const solved = await waitForCaptchaSolution(created.task_id, created.poll_token);
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify(
-                    {
-                      task_id: solved.task_id,
-                      status: solved.status,
-                      solution_token: solved.solution_token,
-                      solve_url: created.solve_url,
-                      poll_token: created.poll_token,
-                      completed_at: solved.completed_at,
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              ],
-              _meta: result._meta,
-            };
-          } catch (error) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: error instanceof Error ? error.message : String(error),
-                    task_id: created.task_id,
-                    poll_token: created.poll_token,
-                    solve_url: created.solve_url,
-                  }),
-                },
-              ],
-              _meta: result._meta,
-            };
+        if (definition.name === "request_human_captcha_bypass" && settlement?.success === false) {
+          const task = parseCaptchaTaskResponse(result);
+          if (task) {
+            await deleteCaptchaTask(task.task_id).catch((error) => {
+              console.error("[captcha] Failed to roll back MCP task after settlement failure:", error);
+            });
           }
         }
 
