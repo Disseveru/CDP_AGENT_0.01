@@ -122,7 +122,9 @@ async function setupRender() {
   console.log("");
   console.log("Local env:");
   console.log(`  SMTP_PASS: ${smtpReady ? "present" : "not in env (using Render dashboard value)"}`);
-  console.log(`  REDIS_URL: ${has("REDIS_URL") ? "present" : "will provision Upstash if missing on Render"}`);
+  console.log(
+    `  RENDER_REDIS_URL: ${has("RENDER_REDIS_URL") ? "present" : "will provision Upstash if missing on Render"}`,
+  );
   console.log(`  RENDER_API_KEY: ${has("RENDER_API_KEY") ? "present" : "missing"}`);
 
   if (!has("RENDER_API_KEY")) {

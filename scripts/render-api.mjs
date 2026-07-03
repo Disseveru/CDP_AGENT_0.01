@@ -109,6 +109,32 @@ export async function getEnvVars(serviceId) {
 }
 
 /**
+ * Decide how render-provision-notifications should handle REDIS_URL.
+ * Prefer the existing Render value. Only honor RENDER_REDIS_URL for explicit
+ * overrides — not generic REDIS_URL, which cloud agents often inject from Railway.
+ */
+export function resolveProvisionRedisUrl({ renderVars, renderRedisUrl }) {
+  const renderHasKey = Object.prototype.hasOwnProperty.call(renderVars, "REDIS_URL");
+  const renderUrl = renderVars.REDIS_URL?.trim();
+  const explicitUrl = renderRedisUrl?.trim();
+
+  if (renderUrl) {
+    return { action: "keep", url: renderUrl };
+  }
+  if (renderHasKey) {
+    return {
+      action: "skip",
+      reason:
+        "REDIS_URL is set on Render but its value is unavailable; skipping Redis changes.",
+    };
+  }
+  if (explicitUrl) {
+    return { action: "set", url: explicitUrl };
+  }
+  return { action: "provision" };
+}
+
+/**
  * Replace all env vars for a service. Render removes any key omitted from the body.
  * Pass the full merged map.
  */
