@@ -117,6 +117,13 @@ function formatZodIssues(error: z.ZodError): string[] {
   });
 }
 
+function hasActionableNotificationChannel(settings: NotificationSettings): boolean {
+  if (settings.push) return true;
+  if (settings.sms && settings.operatorSmsNumber) return true;
+  if (settings.email && settings.operatorEmail) return true;
+  return false;
+}
+
 function parsePartialChannel<T>(
   label: string,
   keys: readonly string[],
@@ -238,13 +245,24 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
     }),
   );
 
-  return {
+  const settings: NotificationSettings = {
     operatorSmsNumber,
     operatorEmail,
     sms,
     email: smtp,
     push,
   };
+
+  if (isManagedProduction && !hasActionableNotificationChannel(settings)) {
+    throw new NotificationConfigError(
+      "No operator notification channel can deliver alerts in production",
+      [
+        "Configure a complete channel: SMTP_USER + SMTP_PASS + OPERATOR_EMAIL, NTFY_TOPIC (use NTFY_TOKEN on public servers), or TWILIO_* + OPERATOR_SMS_NUMBER",
+      ],
+    );
+  }
+
+  return settings;
 }
 
 const absoluteUrlSchema = z.string().trim().url();

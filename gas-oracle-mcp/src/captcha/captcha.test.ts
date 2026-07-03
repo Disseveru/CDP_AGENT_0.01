@@ -133,6 +133,28 @@ test("parseNotificationSettings requires a channel in production", () => {
   }
 });
 
+test("parseNotificationSettings rejects SMTP credentials without OPERATOR_EMAIL in production", () => {
+  const previous = process.env.RAILWAY_ENVIRONMENT;
+  process.env.RAILWAY_ENVIRONMENT = "production";
+  try {
+    assert.throws(
+      () =>
+        parseNotificationSettings({
+          SMTP_USER: "ops@example.com",
+          SMTP_PASS: "app-password",
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof NotificationConfigError);
+        assert.match(error.message, /can deliver alerts/i);
+        return true;
+      },
+    );
+  } finally {
+    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
+    else process.env.RAILWAY_ENVIRONMENT = previous;
+  }
+});
+
 test("parseNotificationSettings rejects partial Twilio configuration", () => {
   assert.throws(
     () =>
