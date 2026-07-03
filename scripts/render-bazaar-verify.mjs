@@ -78,8 +78,23 @@ async function check(name, fn) {
 async function main() {
   const args = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
   const shouldSettle = process.argv.includes("--settle");
-  const { publicUrl, mcpApiKey } = loadLocalConfig();
+  const { publicUrl, mcpApiKey: localKey } = loadLocalConfig();
   const targetUrl = (args[0] || publicUrl).replace(/\/$/, "");
+
+  let mcpApiKey = localKey || process.env.MCP_API_KEY;
+  if (getRenderApiKey()) {
+    try {
+      const service = await findService({ url: targetUrl });
+      if (service) {
+        const vars = await getEnvVars(service.id);
+        if (vars.MCP_API_KEY?.trim()) {
+          mcpApiKey = vars.MCP_API_KEY.trim();
+        }
+      }
+    } catch {
+      // Keep local key when Render API lookup fails.
+    }
+  }
 
   console.log("AgentWire x402 Bazaar compliance check");
   console.log(`URL: ${targetUrl}`);
