@@ -26,6 +26,14 @@ export function parseSubmitBody(body: unknown): CaptchaSubmitInput {
   return submitBodySchema.parse(body);
 }
 
+const FACILITATOR_PARSE_FAILURE =
+  /^Facilitator \S+ returned invalid (?:JSON|data)/;
+
+/** Matches facilitator HTTP-200 bodies that failed JSON/schema validation. */
+export function isFacilitatorSettlementParseFailureMessage(message: string): boolean {
+  return FACILITATOR_PARSE_FAILURE.test(message);
+}
+
 /**
  * x402 `processSettlement` rethrows only {@link FacilitatorResponseError}: the
  * facilitator returned HTTP 200 for `/settle` but the body failed JSON/schema
@@ -33,7 +41,42 @@ export function parseSubmitBody(body: unknown): CaptchaSubmitInput {
  * CAPTCHA task must not be rolled back.
  */
 export function shouldPreserveCaptchaTaskAfterSettlementError(error: unknown): boolean {
-  return getFacilitatorResponseError(error) !== null;
+  if (getFacilitatorResponseError(error) !== null) {
+    return true;
+  }
+  if (error instanceof Error && isFacilitatorSettlementParseFailureMessage(error.message)) {
+    return true;
+  }
+  return false;
+}
+
+/** MCP `createPaymentWrapper` converts settlement throws into payment-required errors. */
+export function shouldPreserveHandlerResultAfterMcpSettlementFailure(result: {
+  isError?: boolean;
+  content?: { text?: string }[];
+}): boolean {
+  if (!result.isError) {
+    return false;
+  }
+
+  const text = result.content?.[0]?.text;
+  if (!text) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string };
+    if (typeof parsed.error !== "string") {
+      return false;
+    }
+
+    const facilitatorMessage = parsed.error.startsWith("Payment settlement failed: ")
+      ? parsed.error.slice("Payment settlement failed: ".length)
+      : parsed.error;
+    return shouldPreserveCaptchaTaskAfterSettlementError(new Error(facilitatorMessage));
+  } catch {
+    return false;
+  }
 }
 
 export async function createCaptchaTask(

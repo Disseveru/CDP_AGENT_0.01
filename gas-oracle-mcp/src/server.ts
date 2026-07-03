@@ -31,6 +31,7 @@ import {
   getCaptchaStatus,
   parseSubmitBody,
   shouldPreserveCaptchaTaskAfterSettlementError,
+  shouldPreserveHandlerResultAfterMcpSettlementFailure,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
 import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
@@ -640,6 +641,59 @@ interface PendingDrainAck {
   eventIds: string[];
 }
 
+interface McpToolResult {
+  content?: { type: string; text?: string }[];
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+}
+
+async function recoverMcpResultAfterFacilitatorParseFailure(
+  result: McpToolResult,
+  options: {
+    toolName: string;
+    meta: Record<string, unknown> | undefined;
+    pendingSettledHandlerResults: Map<string, McpToolResult>;
+    pendingDrainAcks: Map<string, PendingDrainAck>;
+  },
+): Promise<{ result: McpToolResult; settlementSucceeded: boolean }> {
+  if (!shouldPreserveHandlerResultAfterMcpSettlementFailure(result)) {
+    return { result, settlementSucceeded: false };
+  }
+
+  const paymentKey = paymentKeyFromMeta(options.meta);
+  console.warn(
+    `[x402] Facilitator settle response unparseable for ${options.toolName}; ` +
+      `preserving handler result (payment likely settled)`,
+  );
+
+  let recovered = result;
+  if (paymentKey) {
+    const stashed = options.pendingSettledHandlerResults.get(paymentKey);
+    options.pendingSettledHandlerResults.delete(paymentKey);
+    if (stashed) {
+      recovered = stashed;
+    }
+  }
+
+  if (options.toolName === "drain_inbox" && paymentKey) {
+    const pending = options.pendingDrainAcks.get(paymentKey);
+    if (pending) {
+      try {
+        await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+      } catch (error) {
+        console.error(
+          `[drain] Failed to delete inbox events after facilitator parse failure recovery ` +
+            `(inbox=${pending.inboxId}, count=${pending.eventIds.length}):`,
+          error,
+        );
+      }
+      options.pendingDrainAcks.delete(paymentKey);
+    }
+  }
+
+  return { result: recovered, settlementSucceeded: true };
+}
+
 function paymentKeyFromPayload(payload: unknown): string {
   return JSON.stringify(payload);
 }
@@ -661,6 +715,8 @@ function buildMcpServer(state: RuntimeState): McpServer {
 
   /** Peeks held until x402 settlement succeeds for a matching payment payload. */
   const pendingDrainAcks = new Map<string, PendingDrainAck>();
+  /** Handler results stashed before settlement for facilitator parse-failure recovery. */
+  const pendingSettledHandlerResults = new Map<string, McpToolResult>();
 
   if (isReady(state)) {
     for (const { definition, accepts, extensions } of state.tools) {
@@ -678,8 +734,15 @@ function buildMcpServer(state: RuntimeState): McpServer {
           onBeforeExecution: async () => {
             console.log(`[x402] Payment verified for ${definition.name}, executing...`);
           },
+          onAfterExecution: async ({ paymentPayload, result }) => {
+            if (result?.isError) {
+              return;
+            }
+            pendingSettledHandlerResults.set(paymentKeyFromPayload(paymentPayload), result);
+          },
           onAfterSettlement: async ({ paymentPayload, settlement }) => {
             const paymentKey = paymentKeyFromPayload(paymentPayload);
+            pendingSettledHandlerResults.delete(paymentKey);
             const pending = pendingDrainAcks.get(paymentKey);
             if (pending) {
               if (settlement.success) {
@@ -726,10 +789,21 @@ function buildMcpServer(state: RuntimeState): McpServer {
       });
 
       mcpServer.tool(definition.name, definition.description, definition.zodShape, async (args, extra) => {
-        const result = await paidHandler(args, extra);
-        const settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
+        const paidResult = await paidHandler(args, extra);
+        const recovery = await recoverMcpResultAfterFacilitatorParseFailure(paidResult, {
+          toolName: definition.name,
+          meta: extra._meta,
+          pendingSettledHandlerResults,
+          pendingDrainAcks,
+        });
+        let result = recovery.result as typeof paidResult;
+
+        let settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
           | { success?: boolean; errorReason?: string }
           | undefined;
+        if (recovery.settlementSucceeded) {
+          settlement = { success: true };
+        }
 
         if (definition.name === "request_human_captcha_bypass") {
           if (settlement?.success === false) {

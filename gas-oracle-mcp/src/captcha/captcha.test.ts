@@ -16,6 +16,7 @@ import { isCaptchaStorageConfigured } from "./store.js";
 import {
   captchaWidgetScript,
   shouldPreserveCaptchaTaskAfterSettlementError,
+  shouldPreserveHandlerResultAfterMcpSettlementFailure,
   submitBodySchema,
 } from "./tasks.js";
 import { FacilitatorResponseError } from "@x402/core/types";
@@ -78,7 +79,37 @@ test("shouldPreserveCaptchaTaskAfterSettlementError keeps tasks on facilitator p
     ),
     true,
   );
+  assert.equal(
+    shouldPreserveCaptchaTaskAfterSettlementError(
+      new Error("Facilitator settle returned invalid data: {not-json"),
+    ),
+    true,
+  );
   assert.equal(shouldPreserveCaptchaTaskAfterSettlementError(new Error("network reset")), false);
+});
+
+test("shouldPreserveHandlerResultAfterMcpSettlementFailure detects wrapped MCP settlement errors", () => {
+  const paymentRequired = {
+    x402Version: 2,
+    error: "Payment settlement failed: Facilitator settle returned invalid JSON: <html>",
+    resource: { url: "mcp://tool/drain_inbox" },
+    accepts: [],
+  };
+
+  assert.equal(
+    shouldPreserveHandlerResultAfterMcpSettlementFailure({
+      isError: true,
+      content: [{ text: JSON.stringify(paymentRequired) }],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldPreserveHandlerResultAfterMcpSettlementFailure({
+      isError: true,
+      content: [{ text: JSON.stringify({ x402Version: 2, error: "network reset" }) }],
+    }),
+    false,
+  );
 });
 
 test("submitBodySchema validates captcha submit payload", () => {
