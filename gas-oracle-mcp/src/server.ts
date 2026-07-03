@@ -569,16 +569,29 @@ async function handleCaptchaSubmitRequest(
 
   const body = created;
   const responseBody = Buffer.from(JSON.stringify(body));
-  const settlement = await state.discoveryHttpServer.processSettlement(
-    paymentResult.paymentPayload,
-    paymentResult.paymentRequirements,
-    paymentResult.declaredExtensions,
-    {
-      request: requestContext,
-      responseBody,
-      responseHeaders: { "Content-Type": "application/json" },
-    },
-  );
+  let settlement;
+  try {
+    settlement = await state.discoveryHttpServer.processSettlement(
+      paymentResult.paymentPayload,
+      paymentResult.paymentRequirements,
+      paymentResult.declaredExtensions,
+      {
+        request: requestContext,
+        responseBody,
+        responseHeaders: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    await deleteCaptchaTask(created.task_id).catch((rollbackError) => {
+      console.error("[captcha] Failed to roll back task after settlement throw:", rollbackError);
+    });
+    console.error("[captcha] Settlement threw after task creation:", error);
+    res.status(503).json({
+      error: "settlement_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
 
   if (!settlement.success) {
     await deleteCaptchaTask(created.task_id).catch((error) => {
