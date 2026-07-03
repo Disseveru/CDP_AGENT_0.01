@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Operator profile
+
+The repository operator **does not know how to code**. Agents must handle **all** technical work autonomously:
+
+- Write, edit, test, commit, push, and merge code changes yourself.
+- Run scripts, fix production issues, and configure Render/Railway/CDP without asking the operator to touch the codebase.
+- Do not ask the operator to write code, edit files, run terminal commands, or merge pull requests manually.
+- When operator input is needed, limit requests to non-technical actions only (e.g. paste a secret into a dashboard, claim a free resource link, approve an email OTP, or confirm a business decision).
+
+Treat every request as "please do this for me" — the operator describes outcomes; agents deliver the implementation end to end.
+
 ## Mandatory agent bootstrap (every session)
 
 **Before any other work**, every agent opening this environment must:
