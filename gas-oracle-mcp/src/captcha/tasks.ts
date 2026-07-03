@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getFacilitatorResponseError } from "@x402/core/types";
 import { z } from "zod";
 
 import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageReady } from "./store.js";
@@ -23,6 +24,16 @@ export const submitBodySchema = z.object({
 
 export function parseSubmitBody(body: unknown): CaptchaSubmitInput {
   return submitBodySchema.parse(body);
+}
+
+/**
+ * x402 `processSettlement` rethrows only {@link FacilitatorResponseError}: the
+ * facilitator returned HTTP 200 for `/settle` but the body failed JSON/schema
+ * validation. That usually means on-chain settlement already succeeded, so the
+ * CAPTCHA task must not be rolled back.
+ */
+export function shouldPreserveCaptchaTaskAfterSettlementError(error: unknown): boolean {
+  return getFacilitatorResponseError(error) !== null;
 }
 
 export async function createCaptchaTask(

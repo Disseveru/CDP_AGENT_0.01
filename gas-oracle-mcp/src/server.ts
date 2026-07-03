@@ -30,6 +30,7 @@ import {
   createCaptchaTask,
   getCaptchaStatus,
   parseSubmitBody,
+  shouldPreserveCaptchaTaskAfterSettlementError,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
 import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
@@ -582,6 +583,23 @@ async function handleCaptchaSubmitRequest(
       },
     );
   } catch (error) {
+    if (shouldPreserveCaptchaTaskAfterSettlementError(error)) {
+      console.warn(
+        "[captcha] Settlement response could not be parsed; preserving task (payment likely settled):",
+        error,
+      );
+      void notifyOperator({
+        taskId: created.task_id,
+        solveUrl: created.solve_url,
+        captchaType: input.captcha_type,
+        pageUrl: input.pageurl,
+      }).catch((notifyError) => {
+        console.error("[captcha] Operator alert failed:", notifyError);
+      });
+      res.status(201).json(body);
+      return;
+    }
+
     await deleteCaptchaTask(created.task_id).catch((rollbackError) => {
       console.error("[captcha] Failed to roll back task after settlement throw:", rollbackError);
     });

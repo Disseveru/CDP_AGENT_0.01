@@ -13,7 +13,12 @@ import {
 } from "./notification-config.js";
 import { renderSolvePage } from "./solve-page.js";
 import { isCaptchaStorageConfigured } from "./store.js";
-import { captchaWidgetScript, submitBodySchema } from "./tasks.js";
+import {
+  captchaWidgetScript,
+  shouldPreserveCaptchaTaskAfterSettlementError,
+  submitBodySchema,
+} from "./tasks.js";
+import { FacilitatorResponseError } from "@x402/core/types";
 import { safeCompareSecret } from "./tokens.js";
 import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
@@ -65,6 +70,16 @@ const baseAlert = {
   captchaType: "recaptcha" as const,
   pageUrl: "https://example.com/login",
 };
+
+test("shouldPreserveCaptchaTaskAfterSettlementError keeps tasks on facilitator parse failures", () => {
+  assert.equal(
+    shouldPreserveCaptchaTaskAfterSettlementError(
+      new FacilitatorResponseError("Facilitator settle returned invalid JSON"),
+    ),
+    true,
+  );
+  assert.equal(shouldPreserveCaptchaTaskAfterSettlementError(new Error("network reset")), false);
+});
 
 test("submitBodySchema validates captcha submit payload", () => {
   const parsed = submitBodySchema.parse({
