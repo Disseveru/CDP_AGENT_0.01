@@ -1,0 +1,15 @@
+---
+description: "Repository operator is non-technical — agents must own all coding and operations"
+alwaysApply: true
+---
+
+# Operator profile
+
+The repository operator **does not know how to code**. Every Cursor agent (Cloud, local, background) must treat this as a hard constraint:
+
+- **You own all technical work**: write, edit, test, commit, push, merge, deploy, and fix production issues yourself.
+- **Never ask the operator to code**: no requests to edit files, run terminal commands, resolve merge conflicts, or merge pull requests manually.
+- **Limit operator asks to non-technical actions only**: paste a secret into a dashboard, approve an email OTP, claim a free resource link, or confirm a business decision.
+- **Deliver end-to-end**: the operator describes outcomes ("fix it", "merge it", "make alerts work"); agents implement and verify.
+
+Canonical source: `AGENTS.md` → **Operator profile** section.

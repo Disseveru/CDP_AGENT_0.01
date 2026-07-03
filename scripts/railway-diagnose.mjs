@@ -110,6 +110,38 @@ async function main() {
     return;
   }
 
+  try {
+    const stagedData = await gql(
+      token,
+      `query($environmentId: String!) {
+        environmentStagedChanges(environmentId: $environmentId) {
+          id status message lastAppliedError appliedAt patch
+        }
+      }`,
+      { environmentId: ENVIRONMENT_ID },
+    );
+    const staged = stagedData.environmentStagedChanges;
+    if (staged?.id) {
+      console.log("");
+      console.log(`Railway staged changes: status=${staged.status} id=${staged.id}`);
+      if (staged.status === "APPLYING") {
+        console.log(
+          "  → Stuck APPLYING patch in Railway UI. Discard in dashboard (Inspect → X) or run:",
+        );
+        console.log("    npm run railway:staged-fix");
+      }
+      if (staged.lastAppliedError) {
+        console.log(`  → lastAppliedError: ${staged.lastAppliedError}`);
+      }
+      if (staged.patch?.volumes || staged.patch?.services?.[SERVICE_ID]?.volumeMounts) {
+        console.log("  → patch touches volumes/volumeMounts (duplicate mount can wedge APPLYING).");
+      }
+    }
+  } catch (error) {
+    console.log("");
+    console.log(`Railway staged changes: unavailable (${error.message})`);
+  }
+
   console.log("");
   console.log("Railway variables (format only, values hidden):");
 
@@ -150,6 +182,9 @@ async function main() {
     "TWILIO_FROM_NUMBER",
     "SMTP_USER",
     "SMTP_PASS",
+    "NTFY_TOPIC",
+    "NTFY_SERVER",
+    "NTFY_TOKEN",
   ]) {
     if (/PASS|TOKEN|SID/i.test(key)) {
       console.log(`${key}: ${vars[key] ? "set" : "missing"}`);
@@ -170,7 +205,10 @@ async function main() {
     console.log("  → Twilio is partially configured; set all three TWILIO_* vars or remove all.");
   }
   if (!vars.TWILIO_ACCOUNT_SID) {
-    console.log("  → SMS alerts disabled until Twilio secrets are set.");
+    console.log("  → Twilio SMS optional — toll-free verification can take days.");
+  }
+  if (!vars.SMTP_PASS && !vars.NTFY_TOPIC) {
+    console.log("  → For instant alerts without Twilio, set SMTP_PASS (Gmail) or NTFY_TOPIC (ntfy app).");
   }
 
   const tsxPath = join(repoRoot, "gas-oracle-mcp", "node_modules", ".bin", "tsx");

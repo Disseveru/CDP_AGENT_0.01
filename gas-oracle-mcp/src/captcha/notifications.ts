@@ -76,6 +76,9 @@ export async function sendSms(to: string, body: string): Promise<void> {
     console.warn("[captcha/sms] Twilio not configured; skipping SMS");
     return;
   }
+  if (!operatorSmsNumber) {
+    throw new Error("OPERATOR_SMS_NUMBER is not configured");
+  }
 
   if (to !== operatorSmsNumber) {
     throw new Error("SMS recipient does not match configured operator number");
@@ -105,6 +108,42 @@ export async function sendSms(to: string, body: string): Promise<void> {
   if (!response.ok) {
     const detail = await response.text().catch(() => "(no response body)");
     throw new Error(`Twilio SMS failed (${response.status}): ${detail}`);
+  }
+}
+
+export async function sendPush(title: string, body: string, clickUrl: string): Promise<void> {
+  const { push } = CONFIG.captcha.notifications;
+  if (!push) {
+    console.warn("[captcha/push] ntfy not configured; skipping push");
+    return;
+  }
+
+  const url = `${push.server.replace(/\/$/, "")}/${encodeURIComponent(push.topic)}`;
+  const headers: Record<string, string> = {
+    Title: title,
+    Priority: "urgent",
+    Tags: "warning,robot",
+    Click: clickUrl,
+  };
+  if (push.token) {
+    headers.Authorization = `Bearer ${push.token}`;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`ntfy push request failed: ${message}`);
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "(no response body)");
+    throw new Error(`ntfy push failed (${response.status}): ${detail}`);
   }
 }
 
@@ -144,20 +183,21 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 export async function notifyOperator(alert: OperatorAlert): Promise<void> {
   const { notifications } = CONFIG.captcha;
   const smsBody = buildSmsBody(alert);
+  const emailSubject = buildEmailSubject(alert);
+  const emailHtml = buildEmailHtml(alert);
 
   const promises: Promise<void>[] = [];
-  if (notifications.sms) {
+  if (notifications.sms && notifications.operatorSmsNumber) {
     promises.push(sendSms(notifications.operatorSmsNumber, smsBody));
   }
 
   if (notifications.email && notifications.operatorEmail) {
-    promises.push(
-      sendEmail(
-        notifications.operatorEmail,
-        buildEmailSubject(alert),
-        buildEmailHtml(alert),
-      ),
-    );
+    promises.push(sendEmail(notifications.operatorEmail, emailSubject, emailHtml));
+  }
+
+  if (notifications.push) {
+    const safe = sanitizeOperatorAlert(alert);
+    promises.push(sendPush(emailSubject, smsBody, safe.solveUrl));
   }
 
   if (promises.length === 0) {
