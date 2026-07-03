@@ -16,6 +16,8 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
+import { findService, getEnvVars, getRenderApiKey } from "./render-api.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const projectMcpPath = join(repoRoot, ".cursor", "mcp.json");
@@ -84,10 +86,30 @@ function hostingLabel(url) {
   return url.includes("onrender.com") ? "Render" : "Railway";
 }
 
+async function resolveMcpApiKey(publicUrl, existingKey) {
+  if (!publicUrl.includes("onrender.com") || !getRenderApiKey()) {
+    return existingKey || generateApiKey();
+  }
+
+  try {
+    const service =
+      (await findService({ url: publicUrl })) || (await findService({ name: "CDP_AGENT_0.01" }));
+    if (!service) return existingKey || generateApiKey();
+    const vars = await getEnvVars(service.id);
+    if (vars.MCP_API_KEY?.trim()) {
+      return vars.MCP_API_KEY.trim();
+    }
+  } catch {
+    // Fall back to local/generated key when Render API is unavailable.
+  }
+
+  return existingKey || generateApiKey();
+}
+
 async function main() {
   const argvUrl = process.argv[2];
   const publicUrl = await resolvePublicUrl(argvUrl);
-  const apiKey = readJson(secretsPath, {}).mcpApiKey || generateApiKey();
+  const apiKey = await resolveMcpApiKey(publicUrl, readJson(secretsPath, {}).mcpApiKey);
   const host = hostingLabel(publicUrl);
 
   const projectConfig = readJson(projectMcpPath, { mcpServers: {} });
@@ -122,7 +144,9 @@ async function main() {
   console.log("");
   console.log(`NEXT: ensure MCP_API_KEY is set on ${host}, then redeploy`);
   console.log("------------------------------------------------");
-  if (host === "Render") {
+  if (host === "Render" && getRenderApiKey()) {
+    console.log("  MCP_API_KEY synced from Render (no dashboard change needed).");
+  } else if (host === "Render") {
     console.log("  RENDER_API_KEY=... npm run render:provision -- --redeploy");
     console.log("Or Render dashboard → Environment → MCP_API_KEY");
   } else {
