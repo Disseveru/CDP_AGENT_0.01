@@ -110,13 +110,13 @@ export async function getEnvVars(serviceId) {
 
 /**
  * Decide how render-provision-notifications should handle REDIS_URL.
- * Prefer the existing Render value over a local env override so cloud-agent
- * secrets (e.g. Railway REDIS_URL) cannot repoint production CAPTCHA storage.
+ * Prefer the existing Render value. Only honor RENDER_REDIS_URL for explicit
+ * overrides — not generic REDIS_URL, which cloud agents often inject from Railway.
  */
-export function resolveProvisionRedisUrl({ renderVars, envRedisUrl }) {
+export function resolveProvisionRedisUrl({ renderVars, renderRedisUrl }) {
   const renderHasKey = Object.prototype.hasOwnProperty.call(renderVars, "REDIS_URL");
   const renderUrl = renderVars.REDIS_URL?.trim();
-  const envUrl = envRedisUrl?.trim();
+  const explicitUrl = renderRedisUrl?.trim();
 
   if (renderUrl) {
     return { action: "keep", url: renderUrl };
@@ -128,8 +128,8 @@ export function resolveProvisionRedisUrl({ renderVars, envRedisUrl }) {
         "REDIS_URL is set on Render but its value is unavailable; skipping Redis changes.",
     };
   }
-  if (envUrl) {
-    return { action: "set", url: envUrl };
+  if (explicitUrl) {
+    return { action: "set", url: explicitUrl };
   }
   return { action: "provision" };
 }

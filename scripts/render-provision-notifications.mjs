@@ -3,9 +3,12 @@
  * Provision Gmail-only CAPTCHA operator notifications on Render (no Twilio).
  *
  * Reads secrets from the caller environment when set (Cursor Cloud secrets):
- *   SMTP_PASS, OPERATOR_EMAIL, REDIS_URL
+ *   SMTP_PASS, OPERATOR_EMAIL, RENDER_REDIS_URL
  *
- * If REDIS_URL is unset, provisions a temporary free Upstash Redis via
+ * Generic REDIS_URL (often Railway in cloud agents) is ignored so production
+ * Render CAPTCHA storage is never repointed to another host's Redis.
+ *
+ * If RENDER_REDIS_URL is unset and Render has no REDIS_URL, provisions a temporary free Upstash Redis via
  * https://upstash.com/start-redis (3-day trial — user should claim in console).
  *
  * Usage:
@@ -160,7 +163,7 @@ async function main() {
   let upstashConsoleUrl = null;
   const redisDecision = resolveProvisionRedisUrl({
     renderVars: vars,
-    envRedisUrl: process.env.REDIS_URL,
+    renderRedisUrl: process.env.RENDER_REDIS_URL,
   });
   if (!args["skip-redis"]) {
     if (redisDecision.action === "set") {
