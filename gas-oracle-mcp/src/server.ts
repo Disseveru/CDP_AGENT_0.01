@@ -635,6 +635,28 @@ function paymentKeyFromMeta(meta: Record<string, unknown> | undefined): string |
   return paymentKeyFromPayload(payment);
 }
 
+const DRAIN_ACK_DELETE_ATTEMPTS = 3;
+
+async function removeInboxEventsAfterSettlement(
+  inboxId: string,
+  secret: string,
+  eventIds: string[],
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DRAIN_ACK_DELETE_ATTEMPTS; attempt++) {
+    try {
+      await removeInboxEventsByIds(inboxId, secret, eventIds);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DRAIN_ACK_DELETE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function buildMcpServer(state: RuntimeState): McpServer {
   const mcpServer = new McpServer({
     name: CONFIG.serviceName,
@@ -666,11 +688,16 @@ function buildMcpServer(state: RuntimeState): McpServer {
             if (pending) {
               if (settlement.success) {
                 try {
-                  await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+                  await removeInboxEventsAfterSettlement(
+                    pending.inboxId,
+                    pending.secret,
+                    pending.eventIds,
+                  );
                 } catch (error) {
                   console.error(
                     `[drain] Failed to delete inbox events after successful settlement ` +
-                      `(inbox=${pending.inboxId}, count=${pending.eventIds.length}):`,
+                      `(inbox=${pending.inboxId}, count=${pending.eventIds.length}, ` +
+                      `attempts=${DRAIN_ACK_DELETE_ATTEMPTS}):`,
                     error,
                   );
                 }
