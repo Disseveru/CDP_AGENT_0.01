@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isManagedProductionDeploy } from "../deploy-env.js";
+
 /** Twilio REST API base — validated so misconfigured env cannot redirect requests. */
 export const TWILIO_API_BASE_URL = "https://api.twilio.com" as const;
 
@@ -165,7 +167,7 @@ export function parseNotificationSettings(env: EnvSource = process.env): Notific
   const smtpConfigured =
     readEnv(env, "SMTP_USER") !== undefined || readEnv(env, "SMTP_PASS") !== undefined;
   const ntfyConfigured = readEnv(env, "NTFY_TOPIC") !== undefined;
-  const isManagedProduction = process.env.RAILWAY_ENVIRONMENT === "production";
+  const isManagedProduction = isManagedProductionDeploy(env);
 
   if (twilioConfigured && !operatorSmsRaw) {
     throw new NotificationConfigError("OPERATOR_SMS_NUMBER is required when Twilio is configured", [

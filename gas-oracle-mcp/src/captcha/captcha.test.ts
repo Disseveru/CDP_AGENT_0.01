@@ -86,21 +86,15 @@ test("parseNotificationSettings allows fully disabled channels", () => {
 });
 
 test("parseNotificationSettings allows email-only production config", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    const settings = parseNotificationSettings({
-      OPERATOR_EMAIL: "ops@example.com",
-      SMTP_USER: "ops@example.com",
-      SMTP_PASS: "app-password",
-    });
-    assert.equal(settings.operatorSmsNumber, undefined);
-    assert.ok(settings.email);
-    assert.equal(settings.sms, null);
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  const settings = parseNotificationSettings({
+    RAILWAY_ENVIRONMENT: "production",
+    OPERATOR_EMAIL: "ops@example.com",
+    SMTP_USER: "ops@example.com",
+    SMTP_PASS: "app-password",
+  });
+  assert.equal(settings.operatorSmsNumber, undefined);
+  assert.ok(settings.email);
+  assert.equal(settings.sms, null);
 });
 
 test("parseNotificationSettings validates ntfy push configuration", () => {
@@ -116,43 +110,47 @@ test("parseNotificationSettings validates ntfy push configuration", () => {
 });
 
 test("parseNotificationSettings requires a channel in production", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    assert.throws(
-      () => parseNotificationSettings({}),
-      (error: unknown) => {
-        assert.ok(error instanceof NotificationConfigError);
-        assert.match(error.message, /notification channel/i);
-        return true;
-      },
-    );
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  assert.throws(
+    () => parseNotificationSettings({ RAILWAY_ENVIRONMENT: "production" }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /notification channel/i);
+      return true;
+    },
+  );
 });
 
 test("parseNotificationSettings rejects SMTP credentials without OPERATOR_EMAIL in production", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    assert.throws(
-      () =>
-        parseNotificationSettings({
-          SMTP_USER: "ops@example.com",
-          SMTP_PASS: "app-password",
-        }),
-      (error: unknown) => {
-        assert.ok(error instanceof NotificationConfigError);
-        assert.match(error.message, /can deliver alerts/i);
-        return true;
-      },
-    );
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        RAILWAY_ENVIRONMENT: "production",
+        SMTP_USER: "ops@example.com",
+        SMTP_PASS: "app-password",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /can deliver alerts/i);
+      return true;
+    },
+  );
+});
+
+test("parseNotificationSettings rejects incomplete SMTP on Render production", () => {
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        RENDER: "true",
+        RENDER_SERVICE_TYPE: "web",
+        SMTP_USER: "ops@example.com",
+        SMTP_PASS: "app-password",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /can deliver alerts/i);
+      return true;
+    },
+  );
 });
 
 test("parseNotificationSettings rejects partial Twilio configuration", () => {
