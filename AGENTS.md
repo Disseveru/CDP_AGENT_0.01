@@ -28,7 +28,20 @@ Paid external capabilities should go through Agentic Market discovery (`https://
 
 ### Project overview
 
-Node.js CLI using **Coinbase CDP AgentKit** (`@coinbase/agentkit`) and **LangChain tool bindings** (`@coinbase/agentkit-langchain`) on **Base Sepolia**. Entry point: `index.js`.
+**AgentWire Platform** monorepo:
+
+| Module | Entry | Network |
+|---|---|---|
+| AgentWire MCP (production) | `gas-oracle-mcp/` | Base mainnet on Railway/Render |
+| CDP CLI (dev) | `index.js` | Base Sepolia default |
+| DSA searcher (DeFi) | `lib/instadapp/`, `npm run dsa:*` | L2 mainnets |
+
+### Cloud agent cost control
+
+- **IDLE** cloud agent threads are finished conversations — they do **not** keep a VM running and do **not** incur ongoing compute cost.
+- **RUNNING** agents use compute only while actively working.
+- The daily **Find bugs** Cursor automation (`3a29311c-525c-474f-ab70-fc50b6495bee`) spawns a new agent run every day and opens duplicate draft PRs — **this does consume Cursor usage**. Keep it **disabled** unless actively wanted. Dashboard: https://cursor.com/automations/3a29311c-525c-474f-ab70-fc50b6495bee
+- After consolidation merges, run `npm run repo:consolidate-prs -- --apply` and `npm run repo:cleanup-branches -- --apply` to close duplicate PRs and delete stale `cursor/*` branches.
 
 ### Required environment variables
 
