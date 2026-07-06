@@ -60,7 +60,11 @@ function main() {
 
     console.log(`${dryRun ? "would close" : "closing"} #${pr.number} (${pr.headRefName}): ${pr.title}`);
     if (!dryRun) {
-      gh(["pr", "close", String(pr.number), "--comment", CLOSE_COMMENT]);
+      try {
+        gh(["pr", "close", String(pr.number), "--comment", CLOSE_COMMENT]);
+      } catch {
+        gh(["pr", "close", String(pr.number)]);
+      }
       try {
         gh(["api", "-X", "DELETE", `repos/Disseveru/CDP_AGENT_0.01/git/refs/heads/${pr.headRefName}`]);
         console.log(`  deleted branch ${pr.headRefName}`);
