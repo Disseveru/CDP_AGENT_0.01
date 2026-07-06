@@ -13,7 +13,13 @@ import {
 } from "./notification-config.js";
 import { renderSolvePage } from "./solve-page.js";
 import { isCaptchaStorageConfigured } from "./store.js";
-import { captchaWidgetScript, submitBodySchema } from "./tasks.js";
+import {
+  captchaWidgetScript,
+  shouldPreserveCaptchaTaskAfterSettlementError,
+  shouldPreserveHandlerResultAfterMcpSettlementFailure,
+  submitBodySchema,
+} from "./tasks.js";
+import { FacilitatorResponseError } from "@x402/core/types";
 import { safeCompareSecret } from "./tokens.js";
 import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
@@ -66,6 +72,46 @@ const baseAlert = {
   pageUrl: "https://example.com/login",
 };
 
+test("shouldPreserveCaptchaTaskAfterSettlementError keeps tasks on facilitator parse failures", () => {
+  assert.equal(
+    shouldPreserveCaptchaTaskAfterSettlementError(
+      new FacilitatorResponseError("Facilitator settle returned invalid JSON"),
+    ),
+    true,
+  );
+  assert.equal(
+    shouldPreserveCaptchaTaskAfterSettlementError(
+      new Error("Facilitator settle returned invalid data: {not-json"),
+    ),
+    true,
+  );
+  assert.equal(shouldPreserveCaptchaTaskAfterSettlementError(new Error("network reset")), false);
+});
+
+test("shouldPreserveHandlerResultAfterMcpSettlementFailure detects wrapped MCP settlement errors", () => {
+  const paymentRequired = {
+    x402Version: 2,
+    error: "Payment settlement failed: Facilitator settle returned invalid JSON: <html>",
+    resource: { url: "mcp://tool/drain_inbox" },
+    accepts: [],
+  };
+
+  assert.equal(
+    shouldPreserveHandlerResultAfterMcpSettlementFailure({
+      isError: true,
+      content: [{ text: JSON.stringify(paymentRequired) }],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldPreserveHandlerResultAfterMcpSettlementFailure({
+      isError: true,
+      content: [{ text: JSON.stringify({ x402Version: 2, error: "network reset" }) }],
+    }),
+    false,
+  );
+});
+
 test("submitBodySchema validates captcha submit payload", () => {
   const parsed = submitBodySchema.parse({
     sitekey: "abc",
@@ -86,21 +132,15 @@ test("parseNotificationSettings allows fully disabled channels", () => {
 });
 
 test("parseNotificationSettings allows email-only production config", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    const settings = parseNotificationSettings({
-      OPERATOR_EMAIL: "ops@example.com",
-      SMTP_USER: "ops@example.com",
-      SMTP_PASS: "app-password",
-    });
-    assert.equal(settings.operatorSmsNumber, undefined);
-    assert.ok(settings.email);
-    assert.equal(settings.sms, null);
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  const settings = parseNotificationSettings({
+    RAILWAY_ENVIRONMENT: "production",
+    OPERATOR_EMAIL: "ops@example.com",
+    SMTP_USER: "ops@example.com",
+    SMTP_PASS: "app-password",
+  });
+  assert.equal(settings.operatorSmsNumber, undefined);
+  assert.ok(settings.email);
+  assert.equal(settings.sms, null);
 });
 
 test("parseNotificationSettings validates ntfy push configuration", () => {
@@ -116,43 +156,62 @@ test("parseNotificationSettings validates ntfy push configuration", () => {
 });
 
 test("parseNotificationSettings requires a channel in production", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    assert.throws(
-      () => parseNotificationSettings({}),
-      (error: unknown) => {
-        assert.ok(error instanceof NotificationConfigError);
-        assert.match(error.message, /notification channel/i);
-        return true;
-      },
-    );
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  assert.throws(
+    () => parseNotificationSettings({ RAILWAY_ENVIRONMENT: "production" }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /notification channel/i);
+      return true;
+    },
+  );
 });
 
 test("parseNotificationSettings rejects SMTP credentials without OPERATOR_EMAIL in production", () => {
-  const previous = process.env.RAILWAY_ENVIRONMENT;
-  process.env.RAILWAY_ENVIRONMENT = "production";
-  try {
-    assert.throws(
-      () =>
-        parseNotificationSettings({
-          SMTP_USER: "ops@example.com",
-          SMTP_PASS: "app-password",
-        }),
-      (error: unknown) => {
-        assert.ok(error instanceof NotificationConfigError);
-        assert.match(error.message, /can deliver alerts/i);
-        return true;
-      },
-    );
-  } finally {
-    if (previous === undefined) delete process.env.RAILWAY_ENVIRONMENT;
-    else process.env.RAILWAY_ENVIRONMENT = previous;
-  }
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        RAILWAY_ENVIRONMENT: "production",
+        SMTP_USER: "ops@example.com",
+        SMTP_PASS: "app-password",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /can deliver alerts/i);
+      return true;
+    },
+  );
+});
+
+test("parseNotificationSettings rejects SMTP without OPERATOR_EMAIL on Render web services", () => {
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        RENDER: "true",
+        RENDER_SERVICE_TYPE: "web",
+        SMTP_USER: "ops@example.com",
+        SMTP_PASS: "app-password",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /can deliver alerts/i);
+      return true;
+    },
+  );
+});
+
+test("parseNotificationSettings requires a channel on Render web services", () => {
+  assert.throws(
+    () =>
+      parseNotificationSettings({
+        RENDER: "true",
+        RENDER_SERVICE_TYPE: "web",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof NotificationConfigError);
+      assert.match(error.message, /notification channel/i);
+      return true;
+    },
+  );
 });
 
 test("parseNotificationSettings rejects partial Twilio configuration", () => {

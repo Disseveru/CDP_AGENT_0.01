@@ -1,13 +1,14 @@
-# CDP AgentKit CLI
+# AgentWire Platform
 
-Two projects in one repo, both built on **Coinbase CDP AgentKit** on **Base** (Sepolia by default):
+One monorepo, one product family — **AgentWire** sells paid MCP tools to autonomous agents (webhook inbox, web fetch, CAPTCHA human-in-the-loop) on **Base mainnet** via [x402](https://x402.org). Everything else here supports that product:
 
-| Path | What it is |
-|---|---|
-| `index.js` (root) | Interactive Node.js CLI for CDP AgentKit tools. Mints NFTs, sends ETH, checks wallet details. Defaults to a CDP Smart Wallet with the Base Paymaster so transactions are gasless. |
-| `gas-oracle-mcp/` | Standalone TypeScript MCP server (**AgentWire**). The folder keeps a legacy name, but the deployed service/package is AgentWire / `agentwire-mcp`. It sells webhook inbox relay + web fetch to autonomous agents for USDC micro-payments via the [x402](https://x402.org) protocol. |
+| Module | Path | Role |
+|---|---|---|
+| **AgentWire MCP** (production) | `gas-oracle-mcp/` | Paid MCP server — primary revenue surface. Deploy on **Railway** (primary) or **Render** (free-tier fallback). |
+| **CDP CLI** (dev wallet) | `index.js` | Interactive Coinbase CDP AgentKit REPL on Base Sepolia for testing wallets, mints, and transfers. |
+| **DSA searcher** (DeFi ops) | `lib/instadapp/` | Instadapp spell casting + Avocado flash-loan arbitrage scanner on L2 mainnets. |
 
-Both projects share the same set of Coinbase CDP credentials.
+Both AgentWire and the root CLI share the same CDP credentials. See `AGENTS.md` for agent bootstrap and production URLs.
 
 This repo also ships Cursor agent skills for **Agentic Market** (`.agents/skills/agentic-market/`) and **Agentic Wallet** (`.agents/skills/agentic-wallet/`). Every agent session should run `npm run bootstrap:agent` first — it syncs the [Agentic Market skill](https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869) and checks Agentic Wallet status via [`awal`](https://www.npmjs.com/package/awal).
 

@@ -30,6 +30,8 @@ import {
   createCaptchaTask,
   getCaptchaStatus,
   parseSubmitBody,
+  shouldPreserveCaptchaTaskAfterSettlementError,
+  shouldPreserveHandlerResultAfterMcpSettlementFailure,
   waitForCaptchaSolution,
 } from "./captcha/tasks.js";
 import { deleteCaptchaTask, getCaptchaTask, isCaptchaStorageConfigured } from "./captcha/store.js";
@@ -582,6 +584,23 @@ async function handleCaptchaSubmitRequest(
       },
     );
   } catch (error) {
+    if (shouldPreserveCaptchaTaskAfterSettlementError(error)) {
+      console.warn(
+        "[captcha] Settlement response could not be parsed; preserving task (payment likely settled):",
+        error,
+      );
+      void notifyOperator({
+        taskId: created.task_id,
+        solveUrl: created.solve_url,
+        captchaType: input.captcha_type,
+        pageUrl: input.pageurl,
+      }).catch((notifyError) => {
+        console.error("[captcha] Operator alert failed:", notifyError);
+      });
+      res.status(201).json(body);
+      return;
+    }
+
     await deleteCaptchaTask(created.task_id).catch((rollbackError) => {
       console.error("[captcha] Failed to roll back task after settlement throw:", rollbackError);
     });
@@ -635,6 +654,86 @@ function paymentKeyFromMeta(meta: Record<string, unknown> | undefined): string |
   return paymentKeyFromPayload(payment);
 }
 
+const DRAIN_ACK_DELETE_ATTEMPTS = 3;
+
+async function removeInboxEventsAfterSettlement(
+  inboxId: string,
+  secret: string,
+  eventIds: string[],
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DRAIN_ACK_DELETE_ATTEMPTS; attempt++) {
+    try {
+      await removeInboxEventsByIds(inboxId, secret, eventIds);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DRAIN_ACK_DELETE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
+interface McpToolResult {
+  content?: { type: string; text?: string }[];
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+}
+
+async function recoverMcpResultAfterFacilitatorParseFailure(
+  result: McpToolResult,
+  options: {
+    toolName: string;
+    meta: Record<string, unknown> | undefined;
+    pendingSettledHandlerResults: Map<string, McpToolResult>;
+    pendingDrainAcks: Map<string, PendingDrainAck>;
+  },
+): Promise<{ result: McpToolResult; settlementSucceeded: boolean }> {
+  if (!shouldPreserveHandlerResultAfterMcpSettlementFailure(result)) {
+    return { result, settlementSucceeded: false };
+  }
+
+  const paymentKey = paymentKeyFromMeta(options.meta);
+  console.warn(
+    `[x402] Facilitator settle response unparseable for ${options.toolName}; ` +
+      `preserving handler result (payment likely settled)`,
+  );
+
+  let recovered = result;
+  if (paymentKey) {
+    const stashed = options.pendingSettledHandlerResults.get(paymentKey);
+    options.pendingSettledHandlerResults.delete(paymentKey);
+    if (stashed) {
+      recovered = stashed;
+    }
+  }
+
+  if (options.toolName === "drain_inbox" && paymentKey) {
+    const pending = options.pendingDrainAcks.get(paymentKey);
+    if (pending) {
+      try {
+        await removeInboxEventsAfterSettlement(
+          pending.inboxId,
+          pending.secret,
+          pending.eventIds,
+        );
+      } catch (error) {
+        console.error(
+          `[drain] Failed to delete inbox events after facilitator parse failure recovery ` +
+            `(inbox=${pending.inboxId}, count=${pending.eventIds.length}, ` +
+            `attempts=${DRAIN_ACK_DELETE_ATTEMPTS}):`,
+          error,
+        );
+      }
+      options.pendingDrainAcks.delete(paymentKey);
+    }
+  }
+
+  return { result: recovered, settlementSucceeded: true };
+}
+
 function buildMcpServer(state: RuntimeState): McpServer {
   const mcpServer = new McpServer({
     name: CONFIG.serviceName,
@@ -643,6 +742,8 @@ function buildMcpServer(state: RuntimeState): McpServer {
 
   /** Peeks held until x402 settlement succeeds for a matching payment payload. */
   const pendingDrainAcks = new Map<string, PendingDrainAck>();
+  /** Handler results stashed before settlement for facilitator parse-failure recovery. */
+  const pendingSettledHandlerResults = new Map<string, McpToolResult>();
 
   if (isReady(state)) {
     for (const { definition, accepts, extensions } of state.tools) {
@@ -660,17 +761,29 @@ function buildMcpServer(state: RuntimeState): McpServer {
           onBeforeExecution: async () => {
             console.log(`[x402] Payment verified for ${definition.name}, executing...`);
           },
+          onAfterExecution: async ({ paymentPayload, result }) => {
+            if (result?.isError) {
+              return;
+            }
+            pendingSettledHandlerResults.set(paymentKeyFromPayload(paymentPayload), result);
+          },
           onAfterSettlement: async ({ paymentPayload, settlement }) => {
             const paymentKey = paymentKeyFromPayload(paymentPayload);
+            pendingSettledHandlerResults.delete(paymentKey);
             const pending = pendingDrainAcks.get(paymentKey);
             if (pending) {
               if (settlement.success) {
                 try {
-                  await removeInboxEventsByIds(pending.inboxId, pending.secret, pending.eventIds);
+                  await removeInboxEventsAfterSettlement(
+                    pending.inboxId,
+                    pending.secret,
+                    pending.eventIds,
+                  );
                 } catch (error) {
                   console.error(
                     `[drain] Failed to delete inbox events after successful settlement ` +
-                      `(inbox=${pending.inboxId}, count=${pending.eventIds.length}):`,
+                      `(inbox=${pending.inboxId}, count=${pending.eventIds.length}, ` +
+                      `attempts=${DRAIN_ACK_DELETE_ATTEMPTS}):`,
                     error,
                   );
                 }
@@ -708,10 +821,21 @@ function buildMcpServer(state: RuntimeState): McpServer {
       });
 
       mcpServer.tool(definition.name, definition.description, definition.zodShape, async (args, extra) => {
-        const result = await paidHandler(args, extra);
-        const settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
+        const paidResult = await paidHandler(args, extra);
+        const recovery = await recoverMcpResultAfterFacilitatorParseFailure(paidResult, {
+          toolName: definition.name,
+          meta: extra._meta,
+          pendingSettledHandlerResults,
+          pendingDrainAcks,
+        });
+        let result = recovery.result as typeof paidResult;
+
+        let settlement = result._meta?.[MCP_PAYMENT_RESPONSE_META_KEY] as
           | { success?: boolean; errorReason?: string }
           | undefined;
+        if (recovery.settlementSucceeded) {
+          settlement = { success: true };
+        }
 
         if (definition.name === "request_human_captcha_bypass") {
           if (settlement?.success === false) {

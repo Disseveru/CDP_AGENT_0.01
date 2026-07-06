@@ -118,7 +118,7 @@ async function hasMcpVolumeMount(token) {
     (edge) =>
       edge.node.serviceId === config.mcpServiceId &&
       edge.node.mountPath === DEFAULTS.volumeMountPath &&
-      edge.node.state === "READY",
+      edge.node.state !== "FAILED",
   );
 
   if (mounted) {
