@@ -99,12 +99,18 @@ async function main() {
     console.warn("Wallet audit failed; run: node scripts/cdp-wallet-audit.mjs");
   }
 
-  printSection("5. Render keepalive (Cursor — not GitHub Actions)");
-  const keepalive = run(process.execPath, ["scripts/start-render-keepalive.mjs"]);
-  process.stdout.write(keepalive.stdout || "");
-  process.stderr.write(keepalive.stderr || "");
-  if (keepalive.status !== 0) {
-    console.warn("Render keepalive did not start; run: npm run render:keepalive:start");
+  printSection("5. Render keepalive (GitHub Actions — opt-in Cursor fallback)");
+  if (process.env.RENDER_KEEPALIVE === "1" || process.env.RENDER_KEEPALIVE === "true") {
+    const keepalive = run(process.execPath, ["scripts/start-render-keepalive.mjs"]);
+    process.stdout.write(keepalive.stdout || "");
+    process.stderr.write(keepalive.stderr || "");
+    if (keepalive.status !== 0) {
+      console.warn("Render keepalive did not start; run: npm run render:keepalive:start");
+    }
+  } else {
+    console.log(
+      "Skipped Cursor tmux keepalive (primary: .github/workflows/render-keepalive.yml). Set RENDER_KEEPALIVE=1 to enable.",
+    );
   }
 
   if (walletReady) {

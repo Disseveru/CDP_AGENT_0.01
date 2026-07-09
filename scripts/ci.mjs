@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
- * Cursor-native CI — mirrors .github/workflows/ci.yml for Cloud Agents and local dev.
+ * Shared CI script — used by GitHub Actions (.github/workflows/ci.yml) and local dev.
  *
  * Usage:
  *   npm run ci
- *
- * Cloud Agents: run before every commit/push/PR update.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -28,7 +26,7 @@ function run(label, command, args, options = {}) {
   }
 }
 
-console.log("Cursor CI — root CLI + AgentWire MCP");
+console.log("CI — root CLI + AgentWire MCP");
 
 run("Install root dependencies", "npm", ["install"]);
 run("Test root CLI", "npm", ["test"]);

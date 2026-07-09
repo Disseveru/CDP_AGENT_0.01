@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Start Render keepalive in a tmux session (Cursor Cloud — no GitHub Actions needed).
+ * Start Render keepalive in a tmux session (opt-in fallback when GitHub Actions is unavailable).
  *
  * Usage:
  *   npm run render:keepalive:start
- *   RENDER_KEEPALIVE=0 npm run bootstrap:agent   # skip auto-start
+ *   RENDER_KEEPALIVE=1 npm run bootstrap:agent   # auto-start during bootstrap
  */
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -40,8 +40,8 @@ function readState() {
 }
 
 function main() {
-  if (process.env.RENDER_KEEPALIVE === "0" || process.env.RENDER_KEEPALIVE === "false") {
-    console.log("Render keepalive skipped (RENDER_KEEPALIVE=0).");
+  if (process.env.RENDER_KEEPALIVE !== "1" && process.env.RENDER_KEEPALIVE !== "true") {
+    console.log("Render keepalive skipped (set RENDER_KEEPALIVE=1 to start tmux daemon).");
     return;
   }
 
