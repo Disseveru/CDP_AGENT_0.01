@@ -3,27 +3,29 @@
  * Safely sync operational env vars from Cursor Cloud / local shell to Render.
  *
  * Copies only keys that are present in the environment and differ from Render.
- * Values are never printed.
+ * Uses per-key Render API updates so masked secret placeholders from getEnvVars
+ * are never bulk-written as empty strings.
  *
  * Usage:
  *   npm run render:sync-env              # dry-run
  *   npm run render:sync-env -- --apply   # write + optional --redeploy
  */
 import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import {
   findService,
   getEnvVars,
   getRenderApiKey,
-  putEnvVars,
   servicePublicUrl,
+  setEnvVar,
   triggerDeploy,
 } from "./render-api.mjs";
 
 const DEFAULT_RENDER_URL = "https://cdp-agent-0-01.onrender.com";
 
 /** Keys we may copy from env → Render when set locally. */
-const SYNC_KEYS = [
+export const SYNC_KEYS = [
   "CDP_API_KEY",
   "CDP_PRIVATE_KEY",
   "CDP_WALLET_SECRET",
@@ -37,7 +39,7 @@ const SYNC_KEYS = [
   "NTFY_TOPIC",
 ];
 
-const ENV_ALIASES = {
+export const ENV_ALIASES = {
   CDP_API_KEY: ["CDP_API_KEY", "CDP_API_KEY_ID"],
   CDP_PRIVATE_KEY: ["CDP_PRIVATE_KEY", "CDP_API_KEY_SECRET"],
   SMTP_PASS: ["SMTP_PASS", "SMTH_PASS"],
@@ -60,6 +62,44 @@ function resolveEnv(name) {
   return undefined;
 }
 
+/**
+ * @param {Record<string, string>} renderVars snapshot from getEnvVars (masked secrets may be "")
+ * @param {{ resolveEnv: (name: string) => string | undefined, serviceUrl: string }} options
+ * @returns {{ key: string, value: string, reason: string }[]}
+ */
+export function computeRenderSyncUpdates(renderVars, { resolveEnv: resolveEnvFn, serviceUrl }) {
+  const vars = { ...renderVars };
+  const updates = [];
+
+  for (const key of SYNC_KEYS) {
+    const incoming = resolveEnvFn(key);
+    if (!incoming) continue;
+    if (vars[key] === incoming) continue;
+    updates.push({ key, value: incoming, reason: `${key}=updated (${incoming.length} chars)` });
+    vars[key] = incoming;
+  }
+
+  const operatorEmail = resolveEnvFn("OPERATOR_EMAIL");
+  if (!vars.OPERATOR_EMAIL?.trim() && operatorEmail) {
+    updates.push({ key: "OPERATOR_EMAIL", value: operatorEmail, reason: "OPERATOR_EMAIL=updated" });
+    vars.OPERATOR_EMAIL = operatorEmail;
+  }
+
+  if (!vars.SMTP_USER?.trim() && vars.OPERATOR_EMAIL?.trim()) {
+    updates.push({
+      key: "SMTP_USER",
+      value: vars.OPERATOR_EMAIL,
+      reason: "SMTP_USER=set from OPERATOR_EMAIL",
+    });
+  }
+
+  if (!vars.PUBLIC_URL?.trim() && serviceUrl) {
+    updates.push({ key: "PUBLIC_URL", value: serviceUrl, reason: `PUBLIC_URL=${serviceUrl}` });
+  }
+
+  return updates;
+}
+
 async function main() {
   if (!getRenderApiKey()) {
     throw new Error("RENDER_API_KEY is unset.");
@@ -80,41 +120,18 @@ async function main() {
 
   const serviceUrl = servicePublicUrl(service) || targetUrl;
   const vars = await getEnvVars(service.id);
-  const changes = [];
-
-  for (const key of SYNC_KEYS) {
-    const incoming = resolveEnv(key);
-    if (!incoming) continue;
-    if (vars[key] === incoming) continue;
-    vars[key] = incoming;
-    changes.push(`${key}=updated (${incoming.length} chars)`);
-  }
-
-  if (!vars.OPERATOR_EMAIL?.trim() && resolveEnv("OPERATOR_EMAIL")) {
-    vars.OPERATOR_EMAIL = resolveEnv("OPERATOR_EMAIL");
-    changes.push("OPERATOR_EMAIL=updated");
-  }
-
-  if (!vars.SMTP_USER?.trim() && vars.OPERATOR_EMAIL?.trim()) {
-    vars.SMTP_USER = vars.OPERATOR_EMAIL;
-    changes.push("SMTP_USER=set from OPERATOR_EMAIL");
-  }
-
-  if (!vars.PUBLIC_URL?.trim()) {
-    vars.PUBLIC_URL = serviceUrl;
-    changes.push(`PUBLIC_URL=${serviceUrl}`);
-  }
+  const updates = computeRenderSyncUpdates(vars, { resolveEnv, serviceUrl });
 
   console.log(`Render env sync → ${service.name} (${serviceUrl})`);
   console.log(args.apply ? "Mode: apply" : "Mode: dry-run (pass --apply to write)");
   console.log("");
 
-  if (!changes.length) {
+  if (!updates.length) {
     console.log("No changes needed — Render already matches the local environment.");
     return;
   }
 
-  for (const line of changes) console.log(`  • ${line}`);
+  for (const update of updates) console.log(`  • ${update.reason}`);
 
   if (!args.apply) {
     console.log("");
@@ -122,9 +139,11 @@ async function main() {
     return;
   }
 
-  await putEnvVars(service.id, vars);
+  for (const update of updates) {
+    await setEnvVar(service.id, update.key, update.value);
+  }
   console.log("");
-  console.log("Render environment variables updated.");
+  console.log(`Render environment variables updated (${updates.length} key(s)).`);
 
   if (args.redeploy) {
     const deploy = await triggerDeploy(service.id);
@@ -135,7 +154,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}

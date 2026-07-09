@@ -135,6 +135,22 @@ export function resolveProvisionRedisUrl({ renderVars, renderRedisUrl }) {
 }
 
 /**
+ * Set or update a single env var without touching other keys.
+ * Prefer this when syncing a subset of vars — bulk putEnvVars wipes masked
+ * secrets if getEnvVars returned empty placeholders for them.
+ */
+export async function setEnvVar(serviceId, key, value) {
+  const trimmedKey = key?.trim();
+  if (!trimmedKey) {
+    throw new Error("setEnvVar requires a non-empty key.");
+  }
+  return renderFetch(`/services/${serviceId}/env-vars/${encodeURIComponent(trimmedKey)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value: String(value) }),
+  });
+}
+
+/**
  * Replace all env vars for a service. Render removes any key omitted from the body.
  * Pass the full merged map.
  */
