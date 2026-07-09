@@ -150,6 +150,17 @@ export async function setEnvVar(serviceId, key, value) {
   });
 }
 
+/** Remove a single env var without touching other keys. */
+export async function deleteEnvVar(serviceId, key) {
+  const trimmedKey = key?.trim();
+  if (!trimmedKey) {
+    throw new Error("deleteEnvVar requires a non-empty key.");
+  }
+  return renderFetch(`/services/${serviceId}/env-vars/${encodeURIComponent(trimmedKey)}`, {
+    method: "DELETE",
+  });
+}
+
 /**
  * Replace all env vars for a service. Render removes any key omitted from the body.
  * Pass the full merged map.
