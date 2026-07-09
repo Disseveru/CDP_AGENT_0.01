@@ -15,7 +15,7 @@ Treat every request as "please do this for me" — the operator describes outcom
 
 **Before any other work**, every agent opening this environment must:
 
-1. Run `npm run bootstrap:agent` (syncs the Agentic Market skill, checks Agentic Wallet status, and starts the Render keepalive tmux daemon so `https://cdp-agent-0-01.onrender.com` stays awake without GitHub Actions).
+1. Run `npm run bootstrap:agent` (syncs the Agentic Market skill, checks Agentic Wallet status).
 2. Read `.agents/skills/agentic-market/SKILL.md` — canonical source:
    `https://agentic.market/SKILL.md?source=home_cta&install_id=b803148b-f1b6-453e-9695-278c61145869`
 3. Follow the **CLI setup** path (Cursor Cloud Agents are shell-capable). Do not ask the user to pick CLI vs MCP.
@@ -64,25 +64,26 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 |---|---|
 | Install dependencies | `npm install` |
 | Bootstrap Agentic Market + Wallet (every agent session) | `npm run bootstrap:agent` |
-| Keep Render awake (Cursor tmux daemon) | `npm run render:keepalive:start` |
-| Check Render keepalive status | `npm run render:keepalive:status` |
-| **Run CI (Cursor — use instead of GitHub Actions)** | `npm run ci` |
+| Keep Render awake (GitHub Actions cron) | `.github/workflows/render-keepalive.yml` |
+| Keep Render awake (Cursor tmux fallback) | `RENDER_KEEPALIVE=1 npm run render:keepalive:start` |
+| Check Cursor keepalive status | `npm run render:keepalive:status` |
+| **Run CI (local — GitHub Actions runs on push/PR)** | `npm run ci` |
+| Sync env vars to GitHub secrets | `npm run github:sync-secrets -- --apply` |
+| Sync env vars to Render | `npm run render:sync-env -- --apply` |
 | Install agentic-wallet skill (Cursor) | `npm run skills:install` |
 | Start interactive CLI REPL | `npm start` or `node index.js` |
 
-### CI in Cursor (not GitHub Actions)
+### CI (GitHub Actions)
 
-**Primary CI for this repo runs in Cursor**, not GitHub Actions. Cloud Agents and local Cursor sessions should run:
+**Primary CI runs on GitHub Actions** for every push and pull request to `main` (`.github/workflows/ci.yml`). Locally or in Cursor Cloud you can run the same checks with:
 
 ```bash
 npm run ci
 ```
 
-before every commit, push, or PR update. The script (`scripts/ci.mjs`) installs deps, builds AgentWire, and runs all unit tests — the same steps the old GitHub workflow used.
+The script (`scripts/ci.mjs`) installs deps, builds AgentWire, and runs all unit tests.
 
-GitHub Actions is **manual-only** (`workflow_dispatch`) because account billing may block automatic PR runs. To trigger it anyway: GitHub → Actions → **CI (manual)** → Run workflow.
-
-Cloud Agents already run in a full Linux VM with network access, so `npm run ci` is the intended verification path.
+**Secrets:** Operational env vars from Cursor Cloud can be copied to GitHub repository secrets safely with `npm run github:sync-secrets -- --apply` (requires `GITHUB_PAT` with repo admin scope). See `.github/secrets-manifest.json`.
 
 ### Agentic Market + Agentic Wallet skills
 

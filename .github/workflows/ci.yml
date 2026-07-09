@@ -1,9 +1,11 @@
-# Primary CI runs in Cursor (Cloud Agents + local): `npm run ci`
-# This workflow is manual-only — GitHub Actions billing may block automatic PR runs.
-name: CI (manual)
+# Primary CI runs on GitHub Actions for every push/PR to main.
+# Local / Cursor agents can also run: npm run ci
+name: CI
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   test:
@@ -16,5 +18,5 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - name: Run Cursor CI script
+      - name: Run CI
         run: npm run ci

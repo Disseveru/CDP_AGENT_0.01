@@ -52,7 +52,7 @@ async function main() {
       console.log(`  3. Open ${service.dashboardUrl || "https://dashboard.render.com"}`);
       console.log("  4. Settings → Instance Type → Starter → Save");
       console.log("");
-      console.log("Free alternative: Cursor keepalive daemon (no GitHub Actions needed)");
+      console.log("Free alternative: Cursor keepalive daemon (RENDER_KEEPALIVE=1)");
       console.log("  npm run render:keepalive:start");
       process.exit(1);
     }

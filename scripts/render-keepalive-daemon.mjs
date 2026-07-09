@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Cursor-side Render keepalive loop (free tier spins down after ~15 min idle).
+ * Cursor-side Render keepalive loop (opt-in fallback when GitHub Actions cron is unavailable).
  * Pings /health and /ready on an interval. Run via:
  *   npm run render:keepalive:daemon
  *   npm run render:keepalive:start   # tmux background (preferred on Cursor Cloud)
