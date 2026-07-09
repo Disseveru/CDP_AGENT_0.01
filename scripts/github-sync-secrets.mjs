@@ -38,7 +38,9 @@ function resolveEnvValue(name, aliases = {}) {
 function getGithubToken() {
   return (
     process.env.GITHUB_PAT?.trim() ||
+    process.env.GH_PAT?.trim() ||
     process.env.GH_ADMIN_TOKEN?.trim() ||
+    process.env.PERSONAL_ACCESS_TOKEN?.trim() ||
     process.env.GH_TOKEN?.trim() ||
     ""
   );
