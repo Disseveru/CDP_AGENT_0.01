@@ -18,7 +18,7 @@ import {
   findService,
   getEnvVars,
   getRenderApiKey,
-  putEnvVars,
+  setEnvVar,
   servicePublicUrl,
   triggerDeploy,
 } from "./render-api.mjs";
@@ -84,6 +84,34 @@ console.log(JSON.stringify({
   return JSON.parse(jsonLine);
 }
 
+const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+/**
+ * Keys written by render-fix-cdp. Per-key updates avoid bulk env-var replacement,
+ * which would overwrite masked Render secrets (DATABASE_URL, MCP_API_KEY, etc.) with "".
+ *
+ * @param {Record<string, string>} renderVars snapshot from getEnvVars
+ * @param {{ apiKeyId: string, privateKeyOneLine: string, walletSecret: string }} local
+ * @param {string} serviceUrl
+ * @returns {{ key: string, value: string }[]}
+ */
+export function computeRenderCdpFixUpdates(renderVars, { local, serviceUrl }) {
+  const updates = [
+    { key: "CDP_API_KEY", value: local.apiKeyId },
+    { key: "CDP_PRIVATE_KEY", value: local.privateKeyOneLine },
+    { key: "CDP_WALLET_SECRET", value: local.walletSecret },
+    { key: "PAY_TO_ADDRESS", value: CANONICAL_PAY_TO },
+    { key: "FACILITATOR_URL", value: CDP_FACILITATOR_URL },
+    { key: "NETWORK", value: "base" },
+  ];
+
+  if (!renderVars.PUBLIC_URL?.trim()) {
+    updates.push({ key: "PUBLIC_URL", value: serviceUrl });
+  }
+
+  return updates;
+}
+
 async function main() {
   if (!getRenderApiKey()) {
     throw new Error("RENDER_API_KEY is required.");
@@ -97,15 +125,8 @@ async function main() {
   if (!service) throw new Error(`No Render service for ${targetUrl}`);
 
   const serviceUrl = servicePublicUrl(service) || targetUrl;
-  const vars = await getEnvVars(service.id);
-
-  vars.CDP_API_KEY = local.apiKeyId;
-  vars.CDP_PRIVATE_KEY = local.privateKeyOneLine;
-  vars.CDP_WALLET_SECRET = local.walletSecret;
-  vars.PAY_TO_ADDRESS = CANONICAL_PAY_TO;
-  vars.FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
-  vars.NETWORK = "base";
-  if (!vars.PUBLIC_URL?.trim()) vars.PUBLIC_URL = serviceUrl;
+  const renderVars = await getEnvVars(service.id);
+  const updates = computeRenderCdpFixUpdates(renderVars, { local, serviceUrl });
 
   console.log("Render CDP credential fix");
   console.log(`Service: ${service.name} (${service.id})`);
@@ -118,8 +139,10 @@ async function main() {
     return;
   }
 
-  await putEnvVars(service.id, vars);
-  console.log("Render CDP variables updated.");
+  for (const update of updates) {
+    await setEnvVar(service.id, update.key, update.value);
+  }
+  console.log(`Render CDP variables updated (${updates.length} key(s)).`);
 
   if (args.redeploy) {
     const deploy = await triggerDeploy(service.id);
@@ -129,7 +152,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}
