@@ -72,7 +72,7 @@
     "dotenv": "^17.4.2",
     "dsa-connect": "^0.7.52",
     "ethers": "^5.7.2",
-    "web3": "^1.10.4"
+    "web3": "^4.16.0"
   },
   "overrides": {
     "@privy-io/server-auth": "^1.32.5",
