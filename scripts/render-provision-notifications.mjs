@@ -16,20 +16,123 @@
  *   RENDER_API_KEY=... npm run render:provision-notifications -- --redeploy
  *   RENDER_API_KEY=... npm run render:provision-notifications -- https://cdp-agent-0-01.onrender.com --redeploy
  */
-import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import {
   findService,
   getEnvVars,
   getRenderApiKey,
-  putEnvVars,
+  deleteEnvVar,
   resolveProvisionRedisUrl,
   servicePublicUrl,
+  setEnvVar,
   triggerDeploy,
 } from "./render-api.mjs";
 
 const DEFAULT_RENDER_URL = "https://cdp-agent-0-01.onrender.com";
+const TWILIO_KEYS = [
+  "TWILIO_ACCOUNT_SID",
+  "TWILIO_AUTH_TOKEN",
+  "TWILIO_FROM_NUMBER",
+  "OPERATOR_SMS_NUMBER",
+];
+
+/**
+ * Planned notification env changes. Per-key updates avoid bulk env-var replacement,
+ * which would overwrite masked Render secrets with "".
+ *
+ * @param {Record<string, string>} renderVars
+ * @param {{ operatorEmail: string, smtpPass?: string, serviceUrl: string, redisUrl?: string, skipRedis?: boolean }} options
+ * @returns {{ updates: { key: string, value: string }[], deletions: string[], changes: string[], missing: string[] }}
+ */
+export function computeRenderNotificationUpdates(renderVars, {
+  operatorEmail,
+  smtpPass,
+  serviceUrl,
+  redisUrl,
+  skipRedis = false,
+}) {
+  const updates = [];
+  const deletions = [];
+  const changes = [];
+  const missing = [];
+
+  if (renderVars.OPERATOR_EMAIL !== operatorEmail) {
+    updates.push({ key: "OPERATOR_EMAIL", value: operatorEmail });
+    changes.push(`OPERATOR_EMAIL=${operatorEmail}`);
+  }
+
+  const smtpDefaults = {
+    SMTP_HOST: "smtp.gmail.com",
+    SMTP_PORT: "587",
+    SMTP_USER: operatorEmail,
+  };
+  for (const [key, value] of Object.entries(smtpDefaults)) {
+    if (!renderVars[key]?.trim()) {
+      updates.push({ key, value });
+      changes.push(`${key}=${value}`);
+    }
+  }
+
+  if (smtpPass && renderVars.SMTP_PASS !== smtpPass) {
+    updates.push({ key: "SMTP_PASS", value: smtpPass });
+    changes.push("SMTP_PASS=updated from env");
+  } else if (!renderVars.SMTP_PASS?.trim() && !Object.prototype.hasOwnProperty.call(renderVars, "SMTP_PASS")) {
+    missing.push("SMTP_PASS (Gmail app password)");
+  }
+
+  const captchaDefaults = {
+    PUBLIC_URL: serviceUrl,
+    PRICE_CAPTCHA_SUBMIT: "$0.050",
+    PRICE_CAPTCHA_BYPASS: "$0.075",
+    CAPTCHA_TASK_TTL_SEC: "3600",
+    CAPTCHA_POLL_TIMEOUT_MS: "300000",
+    CAPTCHA_POLL_INTERVAL_MS: "2000",
+  };
+  for (const [key, value] of Object.entries(captchaDefaults)) {
+    if (!renderVars[key]?.trim() || key === "PUBLIC_URL") {
+      if (renderVars[key] !== value) {
+        updates.push({ key, value });
+        changes.push(`${key}=${value}`);
+      }
+    }
+  }
+
+  for (const key of TWILIO_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(renderVars, key)) {
+      deletions.push(key);
+      changes.push(`${key}=removed (Gmail-only mode)`);
+    }
+  }
+
+  const redisDecision = resolveProvisionRedisUrl({
+    renderVars,
+    renderRedisUrl: redisUrl,
+  });
+  if (!skipRedis) {
+    if (redisDecision.action === "set") {
+      updates.push({ key: "REDIS_URL", value: redisDecision.url });
+      changes.push("REDIS_URL=set from env");
+    } else if (redisDecision.action === "skip") {
+      // masked REDIS_URL on Render — leave unchanged
+    } else if (redisDecision.action === "provision") {
+      changes.push("REDIS_URL=provisioned via Upstash start-redis");
+    }
+  }
+
+  if (!skipRedis) {
+    const redisConfigured =
+      renderVars.REDIS_URL?.trim() ||
+      Object.prototype.hasOwnProperty.call(renderVars, "REDIS_URL") ||
+      redisDecision.action === "set" ||
+      redisDecision.action === "provision";
+    if (!redisConfigured) missing.push("REDIS_URL");
+  }
+
+  return { updates, deletions, changes, missing, redisDecision };
+}
+
 const UPSTASH_IDEMPOTENCY_KEY = "b436c100-f33c-419d-aceb-f197e55bbfbf";
 
 const { values: args, positionals } = parseArgs({
@@ -106,78 +209,34 @@ async function main() {
   const serviceUrl = servicePublicUrl(service) || targetUrl;
   console.log(`Service: ${service.name} (${service.id})`);
 
-  const vars = await getEnvVars(service.id);
-  const changes = [];
-
+  const renderVars = await getEnvVars(service.id);
   const operatorEmail =
-    process.env.OPERATOR_EMAIL?.trim() || vars.OPERATOR_EMAIL?.trim() || "er2k18@gmail.com";
-  if (vars.OPERATOR_EMAIL !== operatorEmail) {
-    vars.OPERATOR_EMAIL = operatorEmail;
-    changes.push(`OPERATOR_EMAIL=${operatorEmail}`);
-  }
-
-  const smtpDefaults = {
-    SMTP_HOST: "smtp.gmail.com",
-    SMTP_PORT: "587",
-    SMTP_USER: operatorEmail,
-  };
-  for (const [key, value] of Object.entries(smtpDefaults)) {
-    if (!vars[key]?.trim()) {
-      vars[key] = value;
-      changes.push(`${key}=${value}`);
-    }
-  }
-
+    process.env.OPERATOR_EMAIL?.trim() || renderVars.OPERATOR_EMAIL?.trim() || "er2k18@gmail.com";
   const smtpPass = process.env.SMTP_PASS?.trim();
-  if (smtpPass && vars.SMTP_PASS !== smtpPass) {
-    vars.SMTP_PASS = smtpPass;
-    changes.push("SMTP_PASS=updated from env");
-  } else if (!vars.SMTP_PASS?.trim()) {
-    console.log("SMTP_PASS not in env and not on Render — add Gmail app password in dashboard.");
-  }
 
-  const captchaDefaults = {
-    PUBLIC_URL: serviceUrl,
-    PRICE_CAPTCHA_SUBMIT: "$0.050",
-    PRICE_CAPTCHA_BYPASS: "$0.075",
-    CAPTCHA_TASK_TTL_SEC: "3600",
-    CAPTCHA_POLL_TIMEOUT_MS: "300000",
-    CAPTCHA_POLL_INTERVAL_MS: "2000",
-  };
-  for (const [key, value] of Object.entries(captchaDefaults)) {
-    if (!vars[key]?.trim() || key === "PUBLIC_URL") {
-      if (vars[key] !== value) {
-        vars[key] = value;
-        changes.push(`${key}=${value}`);
-      }
-    }
-  }
-
-  for (const key of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "OPERATOR_SMS_NUMBER"]) {
-    if (vars[key]) {
-      delete vars[key];
-      changes.push(`${key}=removed (Gmail-only mode)`);
-    }
-  }
+  let { updates, deletions, changes, missing, redisDecision } = computeRenderNotificationUpdates(
+    renderVars,
+    {
+      operatorEmail,
+      smtpPass,
+      serviceUrl,
+      redisUrl: process.env.RENDER_REDIS_URL,
+      skipRedis: args["skip-redis"],
+    },
+  );
 
   let upstashConsoleUrl = null;
-  const redisDecision = resolveProvisionRedisUrl({
-    renderVars: vars,
-    renderRedisUrl: process.env.RENDER_REDIS_URL,
-  });
-  if (!args["skip-redis"]) {
-    if (redisDecision.action === "set") {
-      vars.REDIS_URL = redisDecision.url;
-      changes.push("REDIS_URL=set from env");
-    } else if (redisDecision.action === "skip") {
-      console.log(redisDecision.reason);
-    } else if (redisDecision.action === "provision") {
-      console.log("REDIS_URL missing — provisioning free Upstash Redis for CAPTCHA storage...");
-      const upstash = await ensureUpstashRedis();
-      vars.REDIS_URL = upstash.redisUrl;
-      upstashConsoleUrl = upstash.consoleUrl;
-      changes.push("REDIS_URL=provisioned via Upstash start-redis");
-    }
+  if (!args["skip-redis"] && redisDecision.action === "provision") {
+    console.log("REDIS_URL missing — provisioning free Upstash Redis for CAPTCHA storage...");
+    const upstash = await ensureUpstashRedis();
+    updates = [...updates, { key: "REDIS_URL", value: upstash.redisUrl }];
+    upstashConsoleUrl = upstash.consoleUrl;
+  } else if (!args["skip-redis"] && redisDecision.action === "skip") {
+    console.log(redisDecision.reason);
+  }
+
+  if (!smtpPass && !renderVars.SMTP_PASS?.trim() && !Object.prototype.hasOwnProperty.call(renderVars, "SMTP_PASS")) {
+    console.log("SMTP_PASS not in env and not on Render — add Gmail app password in dashboard.");
   }
 
   console.log("");
@@ -185,9 +244,6 @@ async function main() {
   for (const line of changes) console.log(`  • ${line}`);
   if (!changes.length) console.log("  • (no changes needed)");
 
-  const missing = [];
-  if (!vars.SMTP_PASS) missing.push("SMTP_PASS (Gmail app password)");
-  if (!vars.REDIS_URL && !args["skip-redis"]) missing.push("REDIS_URL");
   if (missing.length) {
     console.log("");
     console.log("Still missing:");
@@ -206,13 +262,19 @@ async function main() {
     return;
   }
 
-  if (!changes.length) {
+  const writeCount = updates.length + deletions.length;
+  if (!writeCount) {
     console.log("");
     console.log("Render notification config already up to date.");
   } else {
-    await putEnvVars(service.id, vars);
+    for (const update of updates) {
+      await setEnvVar(service.id, update.key, update.value);
+    }
+    for (const key of deletions) {
+      await deleteEnvVar(service.id, key);
+    }
     console.log("");
-    console.log("Render environment variables updated.");
+    console.log(`Render environment variables updated (${writeCount} change(s)).`);
   }
 
   if (args.redeploy) {
@@ -232,7 +294,11 @@ async function main() {
   console.log("  npm run captcha:setup -- --render --test-email");
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}

@@ -17,7 +17,7 @@ import {
   findService,
   getEnvVars,
   getRenderApiKey,
-  putEnvVars,
+  setEnvVar,
   servicePublicUrl,
   triggerDeploy,
 } from "./render-api.mjs";
@@ -57,6 +57,67 @@ function loadSecrets() {
 function saveSecrets(data) {
   mkdirSync(dirname(secretsPath), { recursive: true });
   writeFileSync(secretsPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
+
+/**
+ * Keys written by render-provision. Per-key updates avoid bulk env-var replacement,
+ * which would overwrite masked Render secrets (DATABASE_URL, CDP_API_KEY, etc.) with "".
+ *
+ * @param {Record<string, string>} renderVars snapshot from getEnvVars
+ * @param {string} serviceUrl
+ * @param {{ generateApiKey: () => string }} options
+ * @returns {{ updates: { key: string, value: string }[], changes: string[], mcpApiKey: string | undefined }}
+ */
+export function computeRenderProvisionUpdates(renderVars, serviceUrl, { generateApiKey }) {
+  const updates = [];
+  const changes = [];
+  let mcpApiKey;
+
+  const renderHasMcpKey = Object.prototype.hasOwnProperty.call(renderVars, "MCP_API_KEY");
+  if (!renderHasMcpKey) {
+    mcpApiKey = generateApiKey();
+    updates.push({ key: "MCP_API_KEY", value: mcpApiKey });
+    changes.push("MCP_API_KEY=generated");
+  } else if (!renderVars.MCP_API_KEY?.trim()) {
+    changes.push("MCP_API_KEY=already set (kept)");
+  } else {
+    mcpApiKey = renderVars.MCP_API_KEY;
+    changes.push("MCP_API_KEY=already set (kept)");
+  }
+
+  if (!renderVars.PUBLIC_URL?.trim()) {
+    updates.push({ key: "PUBLIC_URL", value: serviceUrl });
+    changes.push(`PUBLIC_URL=${serviceUrl}`);
+  }
+
+  if (!renderVars.STORAGE_BACKEND?.trim()) {
+    updates.push({ key: "STORAGE_BACKEND", value: "postgres" });
+    changes.push("STORAGE_BACKEND=postgres");
+  }
+
+  if (!renderVars.NETWORK?.trim()) {
+    updates.push({ key: "NETWORK", value: "base" });
+    changes.push("NETWORK=base");
+  }
+
+  if (!renderVars.FACILITATOR_URL?.trim()) {
+    updates.push({ key: "FACILITATOR_URL", value: CDP_FACILITATOR_URL });
+    changes.push(`FACILITATOR_URL=${CDP_FACILITATOR_URL}`);
+  }
+
+  if (!renderVars.SMTP_HOST?.trim()) {
+    updates.push({ key: "SMTP_HOST", value: "smtp.gmail.com" });
+    changes.push("SMTP_HOST=smtp.gmail.com");
+  }
+
+  if (!renderVars.SMTP_PORT?.trim()) {
+    updates.push({ key: "SMTP_PORT", value: "587" });
+    changes.push("SMTP_PORT=587");
+  }
+
+  return { updates, changes, mcpApiKey };
 }
 
 async function main() {
@@ -99,61 +160,32 @@ async function main() {
   console.log(`Service: ${service.name} (${service.id})`);
   console.log(`Render URL: ${serviceUrl}`);
 
-  const vars = await getEnvVars(service.id);
-  const changes = [];
-
-  if (!vars.MCP_API_KEY?.trim()) {
-    const generated = generateApiKey();
-    vars.MCP_API_KEY = generated;
-    changes.push("MCP_API_KEY=generated");
-  } else {
-    changes.push("MCP_API_KEY=already set (kept)");
-  }
-
-  if (!vars.PUBLIC_URL?.trim()) {
-    vars.PUBLIC_URL = serviceUrl;
-    changes.push(`PUBLIC_URL=${serviceUrl}`);
-  }
-
-  if (!vars.STORAGE_BACKEND?.trim()) {
-    vars.STORAGE_BACKEND = "postgres";
-    changes.push("STORAGE_BACKEND=postgres");
-  }
-
-  if (!vars.NETWORK?.trim()) {
-    vars.NETWORK = "base";
-    changes.push("NETWORK=base");
-  }
-
-  const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402";
-  if (!vars.FACILITATOR_URL?.trim()) {
-    vars.FACILITATOR_URL = CDP_FACILITATOR_URL;
-    changes.push(`FACILITATOR_URL=${CDP_FACILITATOR_URL}`);
-  }
-
-  if (!vars.SMTP_HOST?.trim()) {
-    vars.SMTP_HOST = "smtp.gmail.com";
-    changes.push("SMTP_HOST=smtp.gmail.com");
-  }
-
-  if (!vars.SMTP_PORT?.trim()) {
-    vars.SMTP_PORT = "587";
-    changes.push("SMTP_PORT=587");
-  }
+  const renderVars = await getEnvVars(service.id);
+  const { updates, changes, mcpApiKey } = computeRenderProvisionUpdates(renderVars, serviceUrl, {
+    generateApiKey,
+  });
 
   console.log("");
   console.log("Planned changes:");
   for (const line of changes) console.log(`  • ${line}`);
 
   const missing = [];
-  if (!vars.DATABASE_URL) missing.push("DATABASE_URL (Neon connection string)");
-  if (!vars.CDP_API_KEY) missing.push("CDP_API_KEY");
-  if (!vars.CDP_PRIVATE_KEY) missing.push("CDP_PRIVATE_KEY");
-  if (!vars.CDP_WALLET_SECRET) missing.push("CDP_WALLET_SECRET");
-  if (!vars.SMTP_USER || !vars.SMTP_PASS) {
+  const needsKey = (key, label) => {
+    if (renderVars[key]?.trim()) return;
+    if (Object.prototype.hasOwnProperty.call(renderVars, key)) return;
+    missing.push(label);
+  };
+
+  needsKey("DATABASE_URL", "DATABASE_URL (Neon connection string)");
+  needsKey("CDP_API_KEY", "CDP_API_KEY");
+  needsKey("CDP_PRIVATE_KEY", "CDP_PRIVATE_KEY");
+  needsKey("CDP_WALLET_SECRET", "CDP_WALLET_SECRET");
+  if (!renderVars.SMTP_USER?.trim() && !Object.prototype.hasOwnProperty.call(renderVars, "SMTP_USER")) {
     missing.push("SMTP_USER + SMTP_PASS (Gmail app password)");
+  } else if (!renderVars.SMTP_PASS?.trim() && !Object.prototype.hasOwnProperty.call(renderVars, "SMTP_PASS")) {
+    missing.push("SMTP_PASS (Gmail app password)");
   }
-  if (!vars.OPERATOR_EMAIL) missing.push("OPERATOR_EMAIL");
+  needsKey("OPERATOR_EMAIL", "OPERATOR_EMAIL");
 
   if (missing.length) {
     console.log("");
@@ -167,19 +199,24 @@ async function main() {
     return;
   }
 
-  await putEnvVars(service.id, vars);
+  for (const update of updates) {
+    await setEnvVar(service.id, update.key, update.value);
+  }
   console.log("");
-  console.log("Render environment variables updated.");
+  console.log(`Render environment variables updated (${updates.length} key(s)).`);
 
-  saveSecrets({
-    ...loadSecrets(),
-    publicUrl: serviceUrl,
-    renderUrl: serviceUrl,
-    mcpApiKey: vars.MCP_API_KEY,
-    renderServiceId: service.id,
-    updatedAt: new Date().toISOString(),
-  });
-  console.log(`Local secrets saved to ${secretsPath}`);
+  const resolvedMcpApiKey = mcpApiKey || renderVars.MCP_API_KEY;
+  if (resolvedMcpApiKey) {
+    saveSecrets({
+      ...loadSecrets(),
+      publicUrl: serviceUrl,
+      renderUrl: serviceUrl,
+      mcpApiKey: resolvedMcpApiKey,
+      renderServiceId: service.id,
+      updatedAt: new Date().toISOString(),
+    });
+    console.log(`Local secrets saved to ${secretsPath}`);
+  }
 
   if (args.redeploy) {
     const deploy = await triggerDeploy(service.id);
@@ -199,7 +236,11 @@ async function main() {
   console.log("  npm run verify:cursor-mcp");
 }
 
-main().catch((error) => {
-  console.error(error.message || error);
-  process.exit(1);
-});
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error.message || error);
+    process.exit(1);
+  });
+}

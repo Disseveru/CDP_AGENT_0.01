@@ -47,7 +47,7 @@
     "render:sync-env": "node scripts/render-sync-env.mjs",
     "repo:consolidate-prs": "node scripts/consolidate-open-prs.mjs",
     "repo:cleanup-branches": "node scripts/cleanup-stale-branches.mjs",
-    "test": "node --test index.test.js lib/cdp/wallet-policy.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs scripts/render-provision-notifications.test.mjs scripts/railway-staged-fix.test.mjs scripts/github-sync-secrets.test.mjs scripts/render-sync-env.test.mjs"
+    "test": "node --test index.test.js lib/cdp/wallet-policy.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs scripts/render-provision-notifications.test.mjs scripts/render-provision.test.mjs scripts/railway-staged-fix.test.mjs scripts/github-sync-secrets.test.mjs scripts/render-sync-env.test.mjs scripts/render-fix-cdp.test.mjs"
   },
   "repository": {
     "type": "git",
