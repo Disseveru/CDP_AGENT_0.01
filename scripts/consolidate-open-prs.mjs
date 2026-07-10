@@ -22,6 +22,7 @@ const { values: args } = parseArgs({
 });
 
 const dryRun = args["dry-run"] || !args.apply;
+const REPO = process.env.GITHUB_REPOSITORY?.trim() || "Disseveru/CDP_AGENT_0.01";
 const keep = new Set(
   (args.keep ?? "")
     .split(",")
@@ -66,7 +67,7 @@ function main() {
         gh(["pr", "close", String(pr.number)]);
       }
       try {
-        gh(["api", "-X", "DELETE", `repos/Disseveru/CDP_AGENT_0.01/git/refs/heads/${pr.headRefName}`]);
+        gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${pr.headRefName}`]);
         console.log(`  deleted branch ${pr.headRefName}`);
       } catch (error) {
         console.log(`  branch delete skipped: ${error.message}`);

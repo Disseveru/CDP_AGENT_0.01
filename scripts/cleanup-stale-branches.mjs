@@ -17,6 +17,7 @@ const { values: args } = parseArgs({
 });
 
 const dryRun = args["dry-run"] || !args.apply;
+const REPO = process.env.GITHUB_REPOSITORY?.trim() || "Disseveru/CDP_AGENT_0.01";
 
 function gh(args) {
   const result = spawnSync("gh", args, { encoding: "utf8" });
@@ -31,7 +32,7 @@ function main() {
     JSON.parse(gh(["pr", "list", "--state", "open", "--json", "headRefName"])).map((pr) => pr.headRefName),
   );
 
-  const remoteBranches = gh(["api", "repos/Disseveru/CDP_AGENT_0.01/git/matching-refs/heads/cursor/"])
+  const remoteBranches = gh(["api", `repos/${REPO}/git/matching-refs/heads/cursor/`])
     .trim()
     .split("\n")
     .filter(Boolean)
@@ -49,7 +50,7 @@ function main() {
     }
     console.log(`${dryRun ? "would delete" : "deleting"}: ${branch}`);
     if (!dryRun) {
-      gh(["api", "-X", "DELETE", `repos/Disseveru/CDP_AGENT_0.01/git/refs/heads/${branch}`]);
+      gh(["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${branch}`]);
       deleted += 1;
     }
   }
