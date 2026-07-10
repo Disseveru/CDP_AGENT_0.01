@@ -1,4 +1,4 @@
-# Daily production health report for AgentWire on Render.
+# Daily production health report for AgentWire on Railway.
 # Replaces Cursor-agent manual diagnose runs — runs entirely on GitHub Actions.
 name: Production health
 
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      RENDER_URL: https://cdp-agent-0-01.onrender.com
+      RAILWAY_URL: https://gas-oracle-mcp-production.up.railway.app
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +35,7 @@ jobs:
       - name: Run production health report
         id: health
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
         run: npm run repo:health-report
         continue-on-error: true
@@ -57,13 +57,13 @@ jobs:
             --title "$TITLE" \
             --label production-health \
             --body "$(cat <<'EOF'
-          The scheduled **Production health** workflow detected failures on Render.
+          The scheduled **Production health** workflow detected failures on Railway.
 
           **Workflow:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          **Service:** https://cdp-agent-0-01.onrender.com
+          **Service:** https://gas-oracle-mcp-production.up.railway.app
 
-          Review the workflow job summary for check details. A Cloud Agent can run \`npm run render:diagnose\` for a full trace.
+          Review the workflow job summary for check details. A Cloud Agent can run \`npm run railway:diagnose\` for a full trace.
           EOF
           )"
 

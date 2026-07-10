@@ -39,6 +39,7 @@ import { notifyOperator } from "./captcha/notifications.js";
 import { renderSolvePage } from "./captcha/solve-page.js";
 import { renderOperatorSmsConsentPage } from "./captcha/operator-sms-consent-page.js";
 import { safeCompareSecret } from "./captcha/tokens.js";
+import { isCaptchaDevBypassAuthorized } from "./captcha/dev-bypass.js";
 import { fetchUrl } from "./fetch.js";
 import { createInbox, getInboxStats, peekInbox } from "./inbox.js";
 import { extractLinks } from "./links.js";
@@ -510,6 +511,45 @@ async function handleDiscoveryRequest(
   res.json(body);
 }
 
+function readCaptchaDevBypassHeader(req: Request): string | undefined {
+  return (
+    req.get("x-agentwire-captcha-bypass") ||
+    req.get("X-AgentWire-Captcha-Bypass") ||
+    undefined
+  );
+}
+
+function isCaptchaDevBypassRequest(req: Request): boolean {
+  return isCaptchaDevBypassAuthorized(
+    readCaptchaDevBypassHeader(req),
+    CONFIG.captcha.devBypassKey,
+    CONFIG.mcpApiKey,
+  );
+}
+
+async function finalizeCaptchaSubmit(
+  res: Response,
+  input: ReturnType<typeof parseSubmitBody>,
+  options?: { settlementHeaders?: Record<string, string> },
+): Promise<void> {
+  const created = await createCaptchaTask(input, { notify: false });
+  void notifyOperator({
+    taskId: created.task_id,
+    solveUrl: created.solve_url,
+    captchaType: input.captcha_type,
+    pageUrl: input.pageurl,
+  }).catch((error) => {
+    console.error("[captcha] Operator alert failed:", error);
+  });
+
+  if (options?.settlementHeaders) {
+    for (const [name, value] of Object.entries(options.settlementHeaders)) {
+      res.setHeader(name, value);
+    }
+  }
+  res.status(201).json(created);
+}
+
 async function handleCaptchaSubmitRequest(
   req: Request,
   res: Response,
@@ -536,6 +576,20 @@ async function handleCaptchaSubmitRequest(
       error: "invalid_request",
       message: error instanceof Error ? error.message : String(error),
     });
+    return;
+  }
+
+  if (isCaptchaDevBypassRequest(req)) {
+    console.log("[captcha] Developer bypass — skipping x402 payment");
+    try {
+      await finalizeCaptchaSubmit(res, input);
+    } catch (error) {
+      console.error("[captcha] Task creation failed (dev bypass):", error);
+      res.status(503).json({
+        error: "captcha_task_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
     return;
   }
 

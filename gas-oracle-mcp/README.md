@@ -49,6 +49,8 @@ RAILWAY_TOKEN=... npm run railway:provision -- --redeploy
 
 **Railway trial ended?** Use the free Render guide: [docs/RENDER-DEPLOY.md](../docs/RENDER-DEPLOY.md) (Render + Neon Postgres + Gmail alerts, $0/month).
 
+**Recommended:** [docs/RAILWAY-DEPLOY.md](../docs/RAILWAY-DEPLOY.md) — always-on hosting, no cold starts. Bootstrap with `npm run railway:init -- --redeploy`.
+
 ### 1. Get CDP keys (one time)
 
 1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) on your phone browser

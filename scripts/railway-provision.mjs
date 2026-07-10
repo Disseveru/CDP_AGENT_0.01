@@ -11,17 +11,15 @@
  */
 import { parseArgs } from "node:util";
 
-const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
-
-const DEFAULTS = {
-  projectId: "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2",
-  environmentId: "5a065ed8-6c1b-4aa6-8968-7f5f3804c868",
-  mcpServiceId: "0baa1261-4e18-4216-9377-e24e77655561",
-  postgresServiceName: "Postgres",
-  redisServiceName: "Redis",
-  volumeMountPath: "/app/gas-oracle-mcp/data",
-  dataDir: "/app/gas-oracle-mcp/data/inboxes",
-};
+import {
+  createService,
+  findServiceByName,
+  getRailwayToken,
+  loadRailwayConfig,
+  railwayGql,
+  redeployService,
+  upsertVariable,
+} from "./railway-api.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -32,70 +30,31 @@ const { values: args } = parseArgs({
   },
 });
 
-const config = {
-  projectId: args["project-id"] || process.env.RAILWAY_PROJECT_ID || DEFAULTS.projectId,
-  environmentId:
-    args["environment-id"] || process.env.RAILWAY_ENVIRONMENT_ID || DEFAULTS.environmentId,
-  mcpServiceId: args["mcp-service-id"] || process.env.RAILWAY_MCP_SERVICE_ID || DEFAULTS.mcpServiceId,
-};
-
-async function gql(token, query, variables) {
-  const res = await fetch(RAILWAY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors?.length) {
-    throw new Error(body.errors.map((error) => error.message).join("; "));
-  }
-  return body.data;
-}
-
-async function findServiceByName(token, projectId, name) {
-  const data = await gql(
-    token,
-    `query($projectId: String!) {
-      project(id: $projectId) {
-        services { edges { node { id name } } }
-      }
-    }`,
-    { projectId },
-  );
-  return data.project.services.edges.find((edge) => edge.node.name === name)?.node;
-}
+const config = loadRailwayConfig({
+  projectId: args["project-id"],
+  environmentId: args["environment-id"],
+  mcpServiceId: args["mcp-service-id"],
+});
 
 async function ensureRedisService(token) {
-  const existing = await findServiceByName(token, config.projectId, DEFAULTS.redisServiceName);
+  const existing = await findServiceByName(token, config.projectId, config.redisServiceName);
   if (existing) {
     console.log(`Redis service already exists: ${existing.id}`);
     return existing.id;
   }
 
-  const created = await gql(
-    token,
-    `mutation($input: ServiceCreateInput!) {
-      serviceCreate(input: $input) { id name }
-    }`,
-    {
-      input: {
-        projectId: config.projectId,
-        name: DEFAULTS.redisServiceName,
-        source: { image: "railwayapp/redis:7.4" },
-      },
-    },
-  );
-
-  const serviceId = created.serviceCreate.id;
-  console.log(`Created Redis service: ${serviceId}`);
-  return serviceId;
+  const created = await createService(token, {
+    projectId: config.projectId,
+    environmentId: config.environmentId,
+    name: config.redisServiceName,
+    image: config.redisImage,
+  });
+  console.log(`Created Redis service: ${created.id}`);
+  return created.id;
 }
 
 async function hasMcpVolumeMount(token) {
-  const data = await gql(
+  const data = await railwayGql(
     token,
     `query($environmentId: String!) {
       environment(id: $environmentId) {
@@ -117,7 +76,7 @@ async function hasMcpVolumeMount(token) {
   const mounted = data.environment.volumeInstances.edges.find(
     (edge) =>
       edge.node.serviceId === config.mcpServiceId &&
-      edge.node.mountPath === DEFAULTS.volumeMountPath &&
+      edge.node.mountPath === config.volumeMountPath &&
       edge.node.state !== "FAILED",
   );
 
@@ -136,7 +95,7 @@ async function ensureVolume(token) {
   }
 
   try {
-    const created = await gql(
+    const created = await railwayGql(
       token,
       `mutation($input: VolumeCreateInput!) {
         volumeCreate(input: $input) { id name }
@@ -146,7 +105,7 @@ async function ensureVolume(token) {
           projectId: config.projectId,
           environmentId: config.environmentId,
           serviceId: config.mcpServiceId,
-          mountPath: DEFAULTS.volumeMountPath,
+          mountPath: config.volumeMountPath,
           region: null,
         },
       },
@@ -161,57 +120,24 @@ async function ensureVolume(token) {
   }
 }
 
-async function upsertVariable(token, name, value) {
-  await gql(
-    token,
-    `mutation($input: VariableUpsertInput!) {
-      variableUpsert(input: $input)
-    }`,
-    {
-      input: {
-        projectId: config.projectId,
-        environmentId: config.environmentId,
-        serviceId: config.mcpServiceId,
-        name,
-        value,
-        skipDeploys: true,
-      },
-    },
-  );
-  console.log(`Set ${name}`);
-}
-
-async function wireMcpVariables(token, redisServiceName) {
+async function wireMcpVariables(token) {
   const variables = [
-    ["DATABASE_URL", `\${{${DEFAULTS.postgresServiceName}.DATABASE_URL}}`],
-    ["REDIS_URL", `redis://\${{${redisServiceName}.RAILWAY_PRIVATE_DOMAIN}}:6379`],
-    ["DATA_DIR", DEFAULTS.dataDir],
+    ["DATABASE_URL", `\${{${config.postgresServiceName}.DATABASE_URL}}`],
+    ["REDIS_URL", `redis://\${{${config.redisServiceName}.RAILWAY_PRIVATE_DOMAIN}}:6379`],
+    ["DATA_DIR", config.dataDir],
     ["STORAGE_BACKEND", "postgres"],
     ["WEBHOOK_RATE_LIMIT", "120"],
     ["WEBHOOK_RATE_WINDOW_SEC", "60"],
   ];
 
   for (const [name, value] of variables) {
-    await upsertVariable(token, name, value);
+    await upsertVariable(token, config, name, value);
+    console.log(`Set ${name}`);
   }
 }
 
-async function redeployMcp(token) {
-  await gql(
-    token,
-    `mutation($environmentId: String!, $serviceId: String!) {
-      serviceInstanceDeployV2(environmentId: $environmentId, serviceId: $serviceId)
-    }`,
-    {
-      environmentId: config.environmentId,
-      serviceId: config.mcpServiceId,
-    },
-  );
-  console.log("Triggered MCP redeploy.");
-}
-
 async function main() {
-  const token = process.env.RAILWAY_TOKEN?.trim();
+  const token = getRailwayToken();
   if (!token) {
     throw new Error("RAILWAY_TOKEN is required.");
   }
@@ -224,9 +150,9 @@ async function main() {
 
   const redisServiceId = await ensureRedisService(token);
   await ensureVolume(token);
-  await wireMcpVariables(token, DEFAULTS.redisServiceName);
+  await wireMcpVariables(token);
 
-  const redisInstance = await gql(
+  const redisInstance = await railwayGql(
     token,
     `query($serviceId: String!, $environmentId: String!) {
       serviceInstance(serviceId: $serviceId, environmentId: $environmentId) {
@@ -238,7 +164,8 @@ async function main() {
   console.log(`Redis deployment: ${redisInstance.serviceInstance?.latestDeployment?.status || "pending"}`);
 
   if (args.redeploy) {
-    await redeployMcp(token);
+    await redeployService(token, config);
+    console.log("Triggered MCP redeploy.");
   } else {
     console.log("");
     console.log("Variables updated with skipDeploys=true. Redeploy MCP to apply:");

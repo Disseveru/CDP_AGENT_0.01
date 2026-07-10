@@ -23,6 +23,9 @@
     "setup:cursor-mcp": "node scripts/setup-cursor-mcp.mjs",
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
+    "railway:init": "node scripts/railway-init.mjs",
+    "railway:inbox-signup": "node scripts/railway-inbox-signup.mjs",
+    "captcha:hitl": "node -e \"import('./scripts/hitl-captcha.mjs').then(m=>console.log('hitl-captcha module ready'))\"",
     "render:diagnose": "node scripts/render-diagnose.mjs",
     "render:provision": "node scripts/render-provision.mjs",
     "render:provision-notifications": "node scripts/render-provision-notifications.mjs",
@@ -48,7 +51,7 @@
     "repo:consolidate-prs": "node scripts/consolidate-open-prs.mjs",
     "repo:cleanup-branches": "node scripts/cleanup-stale-branches.mjs",
     "repo:health-report": "node scripts/repo-health-report.mjs",
-    "test": "node --test index.test.js lib/cdp/wallet-policy.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs scripts/render-provision-notifications.test.mjs scripts/render-provision.test.mjs scripts/railway-staged-fix.test.mjs scripts/github-sync-secrets.test.mjs scripts/render-sync-env.test.mjs scripts/render-fix-cdp.test.mjs scripts/repo-health-report.test.mjs"
+    "test": "node --test index.test.js lib/cdp/wallet-policy.test.js lib/instadapp/spells.test.js lib/instadapp/client.test.js lib/instadapp/flashloan.test.js lib/instadapp/spellBuilder.test.js lib/instadapp/avocadoWallet.test.js scripts/sync-agentic-market-skill.test.mjs scripts/render-provision-notifications.test.mjs scripts/render-provision.test.mjs scripts/railway-staged-fix.test.mjs scripts/railway-init.test.mjs scripts/github-sync-secrets.test.mjs scripts/render-sync-env.test.mjs scripts/render-fix-cdp.test.mjs scripts/repo-health-report.test.mjs"
   },
   "repository": {
     "type": "git",

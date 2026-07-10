@@ -71,6 +71,10 @@ function resolveStorageBackend(): "file" | "postgres" | undefined {
   return undefined;
 }
 
+function resolveAgentEmailDomain(): string | undefined {
+  return process.env.AGENT_EMAIL_DOMAIN?.trim() || undefined;
+}
+
 export const CONFIG = {
   network: NETWORK,
   caip2Network: CAIP2[NETWORK],
@@ -106,8 +110,11 @@ export const CONFIG = {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
     pollTimeoutMs: Number(process.env.CAPTCHA_POLL_TIMEOUT_MS || 300_000),
     pollIntervalMs: Number(process.env.CAPTCHA_POLL_INTERVAL_MS || 2000),
+    /** Operator/dev secret to skip x402 on POST /api/v1/captcha/submit (falls back to MCP_API_KEY). */
+    devBypassKey: process.env.CAPTCHA_DEV_BYPASS_KEY?.trim() || undefined,
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
   serviceVersion: "1.2.0",
+  agentEmailDomain: resolveAgentEmailDomain(),
 } as const;

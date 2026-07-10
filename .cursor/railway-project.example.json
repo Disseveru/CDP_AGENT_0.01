@@ -1,0 +1,12 @@
+{
+  "projectId": "your-railway-project-uuid",
+  "environmentId": "your-production-environment-uuid",
+  "mcpServiceId": "your-gas-oracle-mcp-service-uuid",
+  "publicUrl": "https://your-service.up.railway.app",
+  "postgresServiceName": "Postgres",
+  "redisServiceName": "Redis",
+  "mcpServiceName": "gas-oracle-mcp",
+  "githubRepo": "Disseveru/CDP_AGENT_0.01",
+  "projectName": "agentwire",
+  "updatedAt": "2026-07-10T00:00:00.000Z"
+}

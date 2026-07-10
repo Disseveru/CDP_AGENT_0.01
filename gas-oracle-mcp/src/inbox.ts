@@ -9,15 +9,22 @@ export async function createInbox(): Promise<{
   secret: string;
   createdAt: string;
   webhookUrl: string;
+  agentEmail?: string;
   usage: string;
 }> {
   const created = await store.createInbox();
+  const agentEmail = CONFIG.agentEmailDomain
+    ? `${created.inboxId}@${CONFIG.agentEmailDomain}`
+    : undefined;
   return {
     ...created,
     webhookUrl: `${CONFIG.publicUrl}/hooks/${created.inboxId}`,
-    usage:
-      "POST JSON to webhookUrl from Stripe, GitHub, humans, or any service. " +
-      "Call drain_inbox with inboxId + secret to pull events into your agent loop.",
+    ...(agentEmail ? { agentEmail } : {}),
+    usage: agentEmail
+      ? `Email sent to ${agentEmail} is relayed into this inbox. POST JSON to webhookUrl from any service. ` +
+        "Call drain_inbox with inboxId + secret to pull events into your agent loop."
+      : "POST JSON to webhookUrl from Stripe, GitHub, humans, or any service. " +
+        "Call drain_inbox with inboxId + secret to pull events into your agent loop.",
   };
 }
 

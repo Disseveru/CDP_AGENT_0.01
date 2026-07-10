@@ -15,50 +15,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const secretsPath = join(repoRoot, ".cursor", "mcp-setup.secrets.json");
 
-const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
-const PROJECT_ID = "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2";
-const ENVIRONMENT_ID = "5a065ed8-6c1b-4aa6-8968-7f5f3804c868";
-const SERVICE_ID = "0baa1261-4e18-4216-9377-e24e77655561";
+import {
+  getRailwayToken,
+  loadRailwayConfig,
+  railwayGql,
+  summarizeCredential,
+} from "./railway-api.mjs";
+
+const config = loadRailwayConfig();
 
 function loadLocalConfig() {
   if (existsSync(secretsPath)) {
-    return JSON.parse(readFileSync(secretsPath, "utf8"));
+    const secrets = JSON.parse(readFileSync(secretsPath, "utf8"));
+    return {
+      railwayUrl: secrets.railwayUrl || secrets.publicUrl,
+      mcpApiKey: secrets.mcpApiKey,
+    };
   }
   if (process.env.RAILWAY_URL) {
     return { railwayUrl: process.env.RAILWAY_URL.replace(/\/$/, "") };
   }
-  throw new Error("No .cursor/mcp-setup.secrets.json and RAILWAY_URL is unset.");
+  return { railwayUrl: config.publicUrl.replace(/\/$/, "") };
 }
 
 async function gql(token, query, variables) {
-  const res = await fetch(RAILWAY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors?.length) {
-    throw new Error(body.errors.map((e) => e.message).join("; "));
-  }
-  return body.data;
-}
-
-function summarizeCredential(name, value) {
-  if (!value) return `${name}: missing`;
-  const issues = [];
-  const trimmed = value.trim();
-  if (name.includes("API_KEY") && /\s/.test(trimmed.replace(/^"+|"+$/g, ""))) {
-    issues.push("contains whitespace");
-  } else if (name.includes("PRIVATE") && /\s/.test(trimmed) && !trimmed.includes("\\n")) {
-    issues.push("contains whitespace");
-  }
-  if (name.includes("PRIVATE") && !value.includes("BEGIN ") && !value.includes("\\n")) {
-    issues.push("not PEM or escaped PEM");
-  }
-  return `${name}: len=${value.length}${issues.length ? ` (${issues.join(", ")})` : " (ok format)"}`;
+  return railwayGql(token, query, variables);
 }
 
 async function main() {
@@ -103,7 +84,7 @@ async function main() {
   const discovery = await fetch(`${railwayUrl}/`);
   console.log(`discovery GET /: ${discovery.status} (402 is normal on Base mainnet)`);
 
-  const token = process.env.RAILWAY_TOKEN?.trim();
+  const token = getRailwayToken();
   if (!token) {
     console.log("");
     console.log("Set RAILWAY_TOKEN to also fetch Railway variables and boot logs.");
@@ -118,7 +99,7 @@ async function main() {
           id status message lastAppliedError appliedAt patch
         }
       }`,
-      { environmentId: ENVIRONMENT_ID },
+      { environmentId: config.environmentId },
     );
     const staged = stagedData.environmentStagedChanges;
     if (staged?.id) {
@@ -133,7 +114,7 @@ async function main() {
       if (staged.lastAppliedError) {
         console.log(`  → lastAppliedError: ${staged.lastAppliedError}`);
       }
-      if (staged.patch?.volumes || staged.patch?.services?.[SERVICE_ID]?.volumeMounts) {
+      if (staged.patch?.volumes || staged.patch?.services?.[config.mcpServiceId]?.volumeMounts) {
         console.log("  → patch touches volumes/volumeMounts (duplicate mount can wedge APPLYING).");
       }
     }
@@ -153,7 +134,7 @@ async function main() {
         edges { node { id status createdAt } }
       }
     }`,
-    { projectId: PROJECT_ID, environmentId: ENVIRONMENT_ID, serviceId: SERVICE_ID },
+    { projectId: config.projectId, environmentId: config.environmentId, serviceId: config.mcpServiceId },
   );
 
   const vars = data.variables || {};

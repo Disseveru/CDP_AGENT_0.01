@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { renderOperatorAlertEmail } from "./email-template.js";
 import { renderOperatorSmsConsentPage } from "./operator-sms-consent-page.js";
-import { buildEmailHtml, buildEmailSubject, buildSmsBody } from "./notifications.js";
+import { buildEmailHtml, buildEmailSubject, buildNtfyTitle, buildSmsBody } from "./notifications.js";
 import {
   NotificationConfigError,
   parseNotificationSettings,
@@ -21,6 +21,7 @@ import {
 } from "./tasks.js";
 import { FacilitatorResponseError } from "@x402/core/types";
 import { safeCompareSecret } from "./tokens.js";
+import { isCaptchaDevBypassAuthorized, resolveCaptchaDevBypassKey } from "./dev-bypass.js";
 import { buildCaptchaSubmitRouteConfig } from "../payments.js";
 import type { CaptchaTask } from "./types.js";
 
@@ -358,6 +359,15 @@ test("buildEmailSubject truncates long task ids safely", () => {
   assert.equal(subject, "⚠️ CAPTCHA Alert: task abcdefgh…");
 });
 
+test("buildNtfyTitle is ASCII-safe for HTTP headers", () => {
+  const title = buildNtfyTitle({
+    ...baseAlert,
+    taskId: "abcdefgh-ijkl-mnop",
+  });
+  assert.equal(title, "CAPTCHA Alert: task abcdefgh...");
+  assert.ok([...title].every((char) => char.charCodeAt(0) <= 255));
+});
+
 test("buildEmailHtml escapes injected markup in alert fields", () => {
   const html = buildEmailHtml({
     taskId: "task-123",
@@ -468,6 +478,19 @@ test("safeCompareSecret rejects missing or empty secrets without throwing", () =
   assert.equal(safeCompareSecret(secret, undefined), false);
   assert.equal(safeCompareSecret("", secret), false);
   assert.equal(safeCompareSecret(secret, "wrong"), false);
+});
+
+test("captcha dev bypass accepts CAPTCHA_DEV_BYPASS_KEY or MCP_API_KEY", () => {
+  assert.equal(resolveCaptchaDevBypassKey("dev-only", "mcp-key"), "dev-only");
+  assert.equal(resolveCaptchaDevBypassKey(undefined, "mcp-key"), "mcp-key");
+  assert.equal(
+    isCaptchaDevBypassAuthorized("mcp-key", undefined, "mcp-key"),
+    true,
+  );
+  assert.equal(
+    isCaptchaDevBypassAuthorized("wrong", undefined, "mcp-key"),
+    false,
+  );
 });
 
 test("isCaptchaStorageConfigured reflects REDIS_URL", () => {
