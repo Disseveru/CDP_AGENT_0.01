@@ -25,11 +25,8 @@ import {
   relayNewMailToWebhook,
   waitForEmailRelay,
 } from "./inbox-email-bridge.mjs";
-import {
-  extractTurnstileSitekey,
-  injectTurnstileToken,
-  requestHitlCaptchaSolution,
-} from "./hitl-captcha.mjs";
+import { extractTurnstileSitekey } from "./hitl-captcha.mjs";
+import { notifyDesktopCaptchaAction, waitForTurnstileToken } from "./desktop-captcha-notify.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
@@ -37,10 +34,6 @@ const artifactDir = "/opt/cursor/artifacts/screenshots";
 const statePath = join(repoRoot, ".cursor", "railway-signup-inbox.json");
 
 const AGENTWIRE_URL = process.env.AGENTWIRE_URL || "http://localhost:4021";
-const HITL_CAPTCHA_URL =
-  process.env.HITL_CAPTCHA_URL ||
-  process.env.AGENTWIRE_PRODUCTION_URL ||
-  "https://gas-oracle-mcp-production.up.railway.app";
 const MCP_API_KEY = process.env.MCP_API_KEY || "local-dev-mcp-key";
 const GITHUB_REPO = "Disseveru/CDP_AGENT_0.01";
 
@@ -125,7 +118,6 @@ async function railwayEmailSignup(page, agentEmail) {
   await screenshot(page, "railway-02-email-filled");
 
   // Railway shows Cloudflare Turnstile before "Continue with Email".
-  const pageUrl = page.url();
   const sitekey = await extractTurnstileSitekey(page);
   if (!sitekey) {
     throw new Error("Could not find Cloudflare Turnstile sitekey on Railway login page");
@@ -133,18 +125,27 @@ async function railwayEmailSignup(page, agentEmail) {
 
   console.log("");
   console.log(`Turnstile sitekey: ${sitekey}`);
-  console.log(`Requesting HITL CAPTCHA via ${HITL_CAPTCHA_URL}...`);
-  console.log("Operator will receive ntfy push with solve link — complete Turnstile on phone.");
+  console.log(
+    "Railway Turnstile must be solved in the SAME desktop Chrome window (tokens are domain-bound).",
+  );
+  console.log("Sending ONE ntfy alert — click the checkbox in desktop Chrome, not on phone solve links.");
 
-  const captcha = await requestHitlCaptchaSolution({
-    sitekey,
-    pageurl: pageUrl,
-    captchaType: "turnstile",
-    agentwireUrl: HITL_CAPTCHA_URL,
+  await notifyDesktopCaptchaAction({
+    title: "Railway signup — click checkbox in Chrome",
+    lines: [
+      "Railway signup is waiting in desktop Chrome.",
+      "",
+      "1. Open the Cursor desktop / agent browser view",
+      "2. Find the Railway login Chrome window",
+      "3. Click the Cloudflare checkbox on THAT page",
+      "",
+      "Ignore old CAPTCHA solve links — they cannot work for Railway.",
+    ],
   });
 
-  console.log(`HITL CAPTCHA solved (task ${captcha.task_id})`);
-  await injectTurnstileToken(page, captcha.solution_token);
+  console.log("Waiting up to 5 minutes for Turnstile in desktop Chrome...");
+  const turnstileToken = await waitForTurnstileToken(page, 300_000);
+  console.log(`Turnstile completed in desktop Chrome (${turnstileToken.slice(0, 16)}…)`);
   await screenshot(page, "railway-02b-captcha-solved");
 
   const continueEmail = await page.evaluateHandle(() => {
@@ -216,7 +217,6 @@ async function main() {
   process.env.DISPLAY = display;
   console.log("Railway inbox signup");
   console.log(`AgentWire (inbox): ${AGENTWIRE_URL}`);
-  console.log(`HITL CAPTCHA:       ${HITL_CAPTCHA_URL}`);
   console.log("");
 
   const domains = await listMailTmDomains();

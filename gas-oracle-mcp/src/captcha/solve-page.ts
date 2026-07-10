@@ -1,5 +1,6 @@
 import { captchaWidgetScript } from "./tasks.js";
 import { escapeHtml, escapeHtmlAttribute } from "./html.js";
+import { CONFIG } from "../config.js";
 import type { CaptchaTask } from "./types.js";
 
 export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
@@ -8,6 +9,20 @@ export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
   const taskId = escapeHtmlAttribute(task.task_id);
   const pageurl = escapeHtml(task.pageurl);
   const solveTokenAttr = escapeHtmlAttribute(solveToken);
+
+  let targetHost = "";
+  let solveHost = "";
+  try {
+    targetHost = new URL(task.pageurl).hostname;
+    solveHost = new URL(CONFIG.publicUrl).hostname;
+  } catch {
+    targetHost = "";
+    solveHost = "";
+  }
+  const crossDomainNote =
+    targetHost && solveHost && targetHost !== solveHost
+      ? `<p class="warn">This CAPTCHA is for <strong>${escapeHtml(targetHost)}</strong>. Solving here only works when that site allows this domain (<code>${escapeHtml(solveHost)}</code>). For Railway and most third-party logins, complete the checkbox in the agent's desktop Chrome window instead.</p>`
+      : "";
 
   const widgetMount =
     task.captcha_type === "turnstile"
@@ -76,6 +91,14 @@ export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
     #status { font-size: 0.9rem; text-align: center; min-height: 1.25rem; }
     .ok { color: #4ade80; }
     .err { color: #f87171; }
+    .warn {
+      font-size: 0.85rem;
+      color: #fbbf24;
+      background: #422006;
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin: 0.5rem 0 0;
+    }
   </style>
 </head>
 <body>
@@ -83,6 +106,7 @@ export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
     <h1>Human CAPTCHA solve</h1>
     <p class="meta">Task ${taskId}</p>
     <p class="meta">${pageurl}</p>
+    ${crossDomainNote}
   </header>
   <main>
     ${widgetMount}

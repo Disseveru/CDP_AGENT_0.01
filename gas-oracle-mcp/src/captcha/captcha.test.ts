@@ -410,6 +410,17 @@ test("renderOperatorSmsConsentPage documents operator opt-in for Twilio verifica
   assert.doesNotMatch(html, /<script>/);
 });
 
+test("renderSolvePage warns when target page host differs from AgentWire public URL", () => {
+  const task: CaptchaTask = {
+    ...baseTask(),
+    captcha_type: "turnstile",
+    pageurl: "https://railway.com/login",
+  };
+  const html = renderSolvePage(task, task.solve_token);
+  assert.match(html, /desktop Chrome/i);
+  assert.match(html, /railway\.com/);
+});
+
 test("renderSolvePage injects task id, solve token, and solve endpoint safely", () => {
   const task = baseTask();
   const html = renderSolvePage(task, task.solve_token);
