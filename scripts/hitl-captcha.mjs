@@ -89,41 +89,58 @@ export async function requestHitlCaptchaSolution({
  * @param {import('puppeteer-core').Page} page
  */
 export async function extractTurnstileSitekey(page) {
-  await page
-    .waitForFunction(
-      () => {
-        if (document.querySelector(".cf-turnstile[data-sitekey]")) return true;
-        return [...document.querySelectorAll("iframe")].some((iframe) =>
-          /challenges\.cloudflare\.com|turnstile/i.test(iframe.getAttribute("src") || ""),
-        );
-      },
-      { timeout: 45_000 },
-    )
-    .catch(() => undefined);
+  const fromNetwork = [];
+  const onRequest = (req) => {
+    const url = req.url();
+    const match = url.match(/\/(0x4[A-Za-z0-9_-]{10,})\//);
+    if (match) fromNetwork.push(match[1]);
+  };
+  page.on("request", onRequest);
 
-  return page.evaluate(() => {
-    const widget = document.querySelector(".cf-turnstile[data-sitekey]");
-    if (widget?.getAttribute("data-sitekey")) {
-      return widget.getAttribute("data-sitekey");
+  try {
+    await page
+      .waitForFunction(
+        () => {
+          if (document.querySelector(".cf-turnstile[data-sitekey], [data-sitekey]")) return true;
+          return [...document.querySelectorAll("iframe")].some((iframe) =>
+            /challenges\.cloudflare\.com|turnstile/i.test(iframe.getAttribute("src") || ""),
+          );
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => undefined);
+
+    if (fromNetwork[0]) return fromNetwork[0];
+
+    for (const frame of page.frames()) {
+      const frameMatch = frame.url().match(/\/(0x4[A-Za-z0-9_-]{10,})\//);
+      if (frameMatch) return frameMatch[1];
     }
-    for (const iframe of document.querySelectorAll("iframe")) {
-      const src = iframe.getAttribute("src") || "";
-      const match = src.match(/[?&]sitekey=([^&]+)/i);
-      if (match) return decodeURIComponent(match[1]);
-    }
-    for (const el of document.querySelectorAll("[data-sitekey]")) {
-      const key = el.getAttribute("data-sitekey");
-      if (key) return key;
-    }
-    for (const script of document.querySelectorAll("script")) {
-      const text = script.textContent || "";
-      const match =
-        text.match(/sitekey['":\s]+([0-9xA-Za-z_-]{10,})/i) ||
-        text.match(/turnstile\.render\([^,]+,\s*\{[^}]*sitekey:\s*['"]([^'"]+)['"]/i);
-      if (match) return match[1];
-    }
-    return null;
-  });
+
+    return page.evaluate(() => {
+      const widget = document.querySelector(".cf-turnstile[data-sitekey], [data-sitekey]");
+      if (widget?.getAttribute("data-sitekey")) {
+        return widget.getAttribute("data-sitekey");
+      }
+      for (const iframe of document.querySelectorAll("iframe")) {
+        const src = iframe.getAttribute("src") || "";
+        const pathKey = src.match(/\/(0x4[A-Za-z0-9_-]{10,})\//);
+        if (pathKey) return pathKey[1];
+        const queryKey = src.match(/[?&]sitekey=([^&]+)/i);
+        if (queryKey) return decodeURIComponent(queryKey[1]);
+      }
+      for (const script of document.querySelectorAll("script")) {
+        const text = script.textContent || "";
+        const match =
+          text.match(/sitekey['":\s]+(0x4[A-Za-z0-9_-]{10,})/i) ||
+          text.match(/turnstile\.render\([^,]+,\s*\{[^}]*sitekey:\s*['"]([^'"]+)['"]/i);
+        if (match) return match[1];
+      }
+      return null;
+    });
+  } finally {
+    page.off("request", onRequest);
+  }
 }
 
 /**

@@ -108,6 +108,9 @@ async function railwayEmailSignup(page, agentEmail) {
   await screenshot(page, "railway-01-login");
 
   await page.evaluate(() => {
+    document
+      .querySelector("button.osano-cm-accept-all, button.osano-cm-denyAll")
+      ?.click();
     const link = [...document.querySelectorAll("a, button")].find((el) =>
       /log in using email/i.test(el.textContent || ""),
     );
@@ -131,7 +134,7 @@ async function railwayEmailSignup(page, agentEmail) {
   console.log("");
   console.log(`Turnstile sitekey: ${sitekey}`);
   console.log(`Requesting HITL CAPTCHA via ${HITL_CAPTCHA_URL}...`);
-  console.log("Operator will receive SMS/email with solve link — complete Turnstile on phone.");
+  console.log("Operator will receive ntfy push with solve link — complete Turnstile on phone.");
 
   const captcha = await requestHitlCaptchaSolution({
     sitekey,
