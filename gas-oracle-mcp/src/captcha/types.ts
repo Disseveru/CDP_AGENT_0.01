@@ -33,6 +33,12 @@ export interface CaptchaSubmitResult {
   poll_token: string;
 }
 
+/** Internal outcome from createCaptchaTask — newlyCreated gates HTTP settlement rollback. */
+export interface CaptchaCreateOutcome {
+  result: CaptchaSubmitResult;
+  newlyCreated: boolean;
+}
+
 export interface CaptchaStatusResult {
   task_id: string;
   status: CaptchaTaskStatus;
