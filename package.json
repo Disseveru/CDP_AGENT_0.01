@@ -71,7 +71,7 @@
     "@langchain/core": "^1.1.48",
     "dotenv": "^17.4.2",
     "dsa-connect": "^0.7.52",
-    "ethers": "^5.7.2",
+    "ethers": "^6.17.0",
     "web3": "^1.10.4"
   },
   "overrides": {
