@@ -201,8 +201,9 @@ export class FileStorage {
 
   private inboxPath(inboxId: string): string {
     this.assertValidInboxId(inboxId);
-    const resolved = path.resolve(this.dataDir, `${inboxId}.json`);
-    if (!resolved.startsWith(`${this.dataDir}${path.sep}`)) {
+    const baseDir = path.resolve(this.dataDir);
+    const resolved = path.resolve(baseDir, `${inboxId}.json`);
+    if (!resolved.startsWith(`${baseDir}${path.sep}`)) {
       throw new Error(`Invalid inbox ID "${inboxId}"`);
     }
     return resolved;
