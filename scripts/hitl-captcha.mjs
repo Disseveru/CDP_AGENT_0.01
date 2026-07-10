@@ -89,6 +89,18 @@ export async function requestHitlCaptchaSolution({
  * @param {import('puppeteer-core').Page} page
  */
 export async function extractTurnstileSitekey(page) {
+  await page
+    .waitForFunction(
+      () => {
+        if (document.querySelector(".cf-turnstile[data-sitekey]")) return true;
+        return [...document.querySelectorAll("iframe")].some((iframe) =>
+          /challenges\.cloudflare\.com|turnstile/i.test(iframe.getAttribute("src") || ""),
+        );
+      },
+      { timeout: 45_000 },
+    )
+    .catch(() => undefined);
+
   return page.evaluate(() => {
     const widget = document.querySelector(".cf-turnstile[data-sitekey]");
     if (widget?.getAttribute("data-sitekey")) {
@@ -99,9 +111,15 @@ export async function extractTurnstileSitekey(page) {
       const match = src.match(/[?&]sitekey=([^&]+)/i);
       if (match) return decodeURIComponent(match[1]);
     }
+    for (const el of document.querySelectorAll("[data-sitekey]")) {
+      const key = el.getAttribute("data-sitekey");
+      if (key) return key;
+    }
     for (const script of document.querySelectorAll("script")) {
       const text = script.textContent || "";
-      const match = text.match(/sitekey['":\s]+([0-9xA-Za-z_-]{10,})/i);
+      const match =
+        text.match(/sitekey['":\s]+([0-9xA-Za-z_-]{10,})/i) ||
+        text.match(/turnstile\.render\([^,]+,\s*\{[^}]*sitekey:\s*['"]([^'"]+)['"]/i);
       if (match) return match[1];
     }
     return null;
