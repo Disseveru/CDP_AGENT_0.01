@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { getFacilitatorResponseError } from "@x402/core/types";
 import { z } from "zod";
 
-import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageReady } from "./store.js";
+import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageReady, linkCaptchaDedupKey, findPendingCaptchaByInput } from "./store.js";
 import { notifyOperator } from "./notifications.js";
 import { generateCaptchaSecret, safeCompareSecret } from "./tokens.js";
 import type {
@@ -85,6 +85,17 @@ export async function createCaptchaTask(
 ): Promise<CaptchaSubmitResult> {
   await assertCaptchaStorageReady();
 
+  const existing = await findPendingCaptchaByInput(input);
+  if (existing) {
+    console.log(`[captcha] Reusing pending task ${existing.task_id} for ${input.pageurl}`);
+    return {
+      task_id: existing.task_id,
+      status: "pending",
+      solve_url: captchaSolveUrl(existing.task_id, existing.solve_token),
+      poll_token: existing.poll_token,
+    };
+  }
+
   const taskId = crypto.randomUUID();
   const pollToken = generateCaptchaSecret();
   const solveToken = generateCaptchaSecret();
@@ -101,6 +112,7 @@ export async function createCaptchaTask(
   };
 
   await saveCaptchaTask(task);
+  await linkCaptchaDedupKey(input, taskId);
 
   const solveUrl = captchaSolveUrl(taskId, solveToken);
   const result = { task_id: taskId, status: "pending" as const, solve_url: solveUrl, poll_token: pollToken };
