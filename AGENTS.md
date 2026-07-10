@@ -64,11 +64,11 @@ Cloud secret managers may inject the `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` ali
 |---|---|
 | Install dependencies | `npm install` |
 | Bootstrap Agentic Market + Wallet (every agent session) | `npm run bootstrap:agent` |
-| Keep Render awake (GitHub Actions cron) | `.github/workflows/render-keepalive.yml` |
-| Keep Render awake (Cursor tmux fallback) | `RENDER_KEEPALIVE=1 npm run render:keepalive:start` |
+| Keep Render awake (Cursor tmux fallback — legacy) | `RENDER_KEEPALIVE=1 npm run render:keepalive:start` |
+| **Deploy AgentWire on Railway (recommended)** | `docs/RAILWAY-DEPLOY.md` → `npm run railway:init -- --redeploy` |
 | Check Cursor keepalive status | `npm run render:keepalive:status` |
 | **Run CI (local — GitHub Actions runs on push/PR)** | `npm run ci` |
-| Production health report (local) | `npm run repo:health-report` |
+| Production health report (local) | `npm run repo:health-report` (defaults to Railway URL) |
 | Sync env vars to GitHub secrets | `npm run github:sync-secrets -- --apply` |
 | Sync env vars to Render | `npm run render:sync-env -- --apply` |
 | Install agentic-wallet skill (Cursor) | `npm run skills:install` |
@@ -93,8 +93,7 @@ Scheduled and on-demand automation lives in `.github/workflows/` — no Cursor a
 | Workflow | Schedule | Purpose |
 |---|---|---|
 | `ci.yml` | push / PR | Unit tests + AgentWire build |
-| `render-keepalive.yml` | every 5 min | Ping Render `/health` + `/ready` |
-| `production-health.yml` | daily 08:00 UTC | Full health report; opens issue on failure |
+| `production-health.yml` | daily 08:00 UTC | Full health report on Railway; opens issue on failure |
 | `security-audit.yml` | weekly + push/PR | `npm audit --audit-level=high` |
 | `codeql.yml` | weekly + push/PR | Static analysis for JS/TS |
 | `repo-maintenance.yml` | weekly Sunday | Close orphaned PRs, delete stale `cursor/*` branches |
@@ -145,11 +144,17 @@ npm run verify:cursor-mcp
 
 Deploy guide: `docs/RENDER-DEPLOY.md`. Blueprint: `render.yaml` at repo root.
 
-### AgentWire on Railway (production)
+### AgentWire on Railway (production — recommended)
+
+Deploy guide: `docs/RAILWAY-DEPLOY.md`. Greenfield bootstrap:
+
+```bash
+RAILWAY_TOKEN=... npm run railway:init -- --redeploy
+```
 
 | Item | Value |
 |---|---|
-| Public URL | `https://gas-oracle-mcp-production.up.railway.app` |
+| Public URL | `https://gas-oracle-mcp-production.up.railway.app` (or your new domain after `railway:init`) |
 | Network | **Base mainnet** (`NETWORK=base`, chain `eip155:8453`) — real USDC, not testnet |
 | MCP SSE endpoint | `https://gas-oracle-mcp-production.up.railway.app/sse` |
 | Health / ready | `/health` (liveness + storage/redis status), `/ready` (CDP/x402 init) |

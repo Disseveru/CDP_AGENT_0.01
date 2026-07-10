@@ -12,14 +12,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import {
+  getRailwayToken,
+  loadRailwayConfig,
+  railwayGql,
+  redeployService,
+  upsertVariable,
+} from "./railway-api.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const secretsPath = join(repoRoot, ".cursor", "mcp-setup.secrets.json");
 
-const PROJECT_ID = "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2";
-const ENVIRONMENT_ID = "5a065ed8-6c1b-4aa6-8968-7f5f3804c868";
-const SERVICE_ID = "0baa1261-4e18-4216-9377-e24e77655561";
-const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
+const config = loadRailwayConfig();
 
 const { values: args } = parseArgs({
   options: {
@@ -40,68 +45,31 @@ function loadMcpApiKey() {
   return { key, publicUrl: secrets.publicUrl || secrets.railwayUrl };
 }
 
-async function gql(token, query, variables) {
-  const res = await fetch(RAILWAY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors?.length) {
-    throw new Error(body.errors.map((error) => error.message).join("; "));
-  }
-  return body.data;
-}
-
 async function upsertMcpKey(token, key) {
-  await gql(
-    token,
-    `mutation($input: VariableUpsertInput!) {
-      variableUpsert(input: $input)
-    }`,
-    {
-      input: {
-        projectId: PROJECT_ID,
-        environmentId: ENVIRONMENT_ID,
-        serviceId: SERVICE_ID,
-        name: "MCP_API_KEY",
-        value: key,
-        skipDeploys: true,
-      },
-    },
-  );
+  await upsertVariable(token, config, "MCP_API_KEY", key);
   console.log("OK  MCP_API_KEY synced to Railway variables");
 }
 
 async function redeployMcp(token) {
-  await gql(
-    token,
-    `mutation($environmentId: String!, $serviceId: String!) {
-      serviceInstanceDeployV2(environmentId: $environmentId, serviceId: $serviceId)
-    }`,
-    { environmentId: ENVIRONMENT_ID, serviceId: SERVICE_ID },
-  );
+  await redeployService(token, config);
   console.log("OK  Triggered MCP redeploy");
 }
 
 async function restartLatestDeployment(token) {
-  const data = await gql(
+  const data = await railwayGql(
     token,
     `query($serviceId: String!, $environmentId: String!) {
       serviceInstance(serviceId: $serviceId, environmentId: $environmentId) {
         latestDeployment { id }
       }
     }`,
-    { serviceId: SERVICE_ID, environmentId: ENVIRONMENT_ID },
+    { serviceId: config.mcpServiceId, environmentId: config.environmentId },
   );
   const deploymentId = data.serviceInstance?.latestDeployment?.id;
   if (!deploymentId) {
     throw new Error("No deployment found to restart");
   }
-  await gql(
+  await railwayGql(
     token,
     `mutation($id: String!) { deploymentRestart(id: $id) }`,
     { id: deploymentId },
@@ -128,7 +96,7 @@ async function waitForMcpAuth(publicUrl, key, timeoutMs = 180_000) {
 }
 
 async function main() {
-  const token = process.env.RAILWAY_TOKEN?.trim();
+  const token = getRailwayToken();
   if (!token) {
     throw new Error("RAILWAY_TOKEN is required.");
   }

@@ -14,16 +14,16 @@
  */
 import { parseArgs } from "node:util";
 
-const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
+import {
+  getRailwayToken,
+  loadRailwayConfig,
+  redeployService,
+  upsertVariable,
+} from "./railway-api.mjs";
 
-const DEFAULTS = {
-  projectId: "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2",
-  environmentId: "5a065ed8-6c1b-4aa6-8968-7f5f3804c868",
-  mcpServiceId: "0baa1261-4e18-4216-9377-e24e77655561",
-  publicUrl: "https://gas-oracle-mcp-production.up.railway.app",
-  operatorSmsNumber: process.env.OPERATOR_SMS_NUMBER?.trim(),
-  operatorEmail: process.env.OPERATOR_EMAIL?.trim(),
-};
+const config = loadRailwayConfig();
+const operatorSmsNumber = process.env.OPERATOR_SMS_NUMBER?.trim();
+const operatorEmail = process.env.OPERATOR_EMAIL?.trim();
 
 const { values: args } = parseArgs({
   options: {
@@ -33,7 +33,7 @@ const { values: args } = parseArgs({
 
 /** Static config written on every provision run. */
 const STATIC_VARIABLES = [
-  ["PUBLIC_URL", DEFAULTS.publicUrl],
+  ["PUBLIC_URL", config.publicUrl],
   ["PRICE_CAPTCHA_SUBMIT", "$0.050"],
   ["PRICE_CAPTCHA_BYPASS", "$0.075"],
   ["CAPTCHA_TASK_TTL_SEC", "3600"],
@@ -41,19 +41,19 @@ const STATIC_VARIABLES = [
   ["CAPTCHA_POLL_INTERVAL_MS", "2000"],
 ];
 
-if (DEFAULTS.operatorSmsNumber) {
-  STATIC_VARIABLES.push(["OPERATOR_SMS_NUMBER", normalizeE164(DEFAULTS.operatorSmsNumber)]);
+if (operatorSmsNumber) {
+  STATIC_VARIABLES.push(["OPERATOR_SMS_NUMBER", normalizeE164(operatorSmsNumber)]);
 }
-if (DEFAULTS.operatorEmail) {
-  STATIC_VARIABLES.push(["OPERATOR_EMAIL", DEFAULTS.operatorEmail]);
+if (operatorEmail) {
+  STATIC_VARIABLES.push(["OPERATOR_EMAIL", operatorEmail]);
 }
 
 /** Applied only when SMTP_PASS is present — avoids partial SMTP config that fails boot validation. */
-const SMTP_VARIABLES = DEFAULTS.operatorEmail
+const SMTP_VARIABLES = operatorEmail
   ? [
       ["SMTP_HOST", "smtp.gmail.com"],
       ["SMTP_PORT", "587"],
-      ["SMTP_USER", DEFAULTS.operatorEmail],
+      ["SMTP_USER", operatorEmail],
     ]
   : [
       ["SMTP_HOST", "smtp.gmail.com"],
@@ -73,53 +73,13 @@ const SECRET_ENV_MAP = [
   ["NTFY_TOKEN", "NTFY_TOKEN"],
 ];
 
-async function gql(token, query, variables) {
-  const res = await fetch(RAILWAY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors?.length) {
-    throw new Error(body.errors.map((error) => error.message).join("; "));
-  }
-  return body.data;
-}
-
-async function upsertVariable(token, name, value) {
-  await gql(
-    token,
-    `mutation($input: VariableUpsertInput!) {
-      variableUpsert(input: $input)
-    }`,
-    {
-      input: {
-        projectId: DEFAULTS.projectId,
-        environmentId: DEFAULTS.environmentId,
-        serviceId: DEFAULTS.mcpServiceId,
-        name,
-        value,
-        skipDeploys: true,
-      },
-    },
-  );
+async function upsertNotificationVariable(token, name, value) {
+  await upsertVariable(token, config, name, value);
   console.log(`Set ${name}`);
 }
 
 async function redeployMcp(token) {
-  await gql(
-    token,
-    `mutation($environmentId: String!, $serviceId: String!) {
-      serviceInstanceDeployV2(environmentId: $environmentId, serviceId: $serviceId)
-    }`,
-    {
-      environmentId: DEFAULTS.environmentId,
-      serviceId: DEFAULTS.mcpServiceId,
-    },
-  );
+  await redeployService(token, config);
   console.log("Triggered MCP redeploy.");
 }
 
@@ -135,26 +95,26 @@ function normalizeE164(value) {
 }
 
 async function main() {
-  const token = process.env.RAILWAY_TOKEN?.trim();
+  const token = getRailwayToken();
   if (!token) {
     throw new Error("RAILWAY_TOKEN is required.");
   }
 
   console.log("AgentWire notification variable provision");
-  console.log(`Service:  gas-oracle-mcp (${DEFAULTS.mcpServiceId})`);
-  console.log(`Operator: ${DEFAULTS.operatorEmail} / ${DEFAULTS.operatorSmsNumber}`);
+  console.log(`Service:  ${config.mcpServiceName} (${config.mcpServiceId})`);
+  console.log(`Operator: ${operatorEmail} / ${operatorSmsNumber}`);
   console.log("");
 
   for (const [name, value] of STATIC_VARIABLES) {
-    await upsertVariable(token, name, value);
+    await upsertNotificationVariable(token, name, value);
   }
 
   const smtpPass = process.env.SMTP_PASS?.trim();
   if (smtpPass) {
     for (const [name, value] of SMTP_VARIABLES) {
-      await upsertVariable(token, name, value);
+      await upsertNotificationVariable(token, name, value);
     }
-    await upsertVariable(token, "SMTP_PASS", smtpPass);
+    await upsertNotificationVariable(token, "SMTP_PASS", smtpPass);
   }
 
   const missingSecrets = [];
@@ -166,7 +126,7 @@ async function main() {
         railwayName === "TWILIO_FROM_NUMBER" || railwayName === "OPERATOR_SMS_NUMBER"
           ? normalizeE164(value)
           : value;
-      await upsertVariable(token, railwayName, normalized);
+      await upsertNotificationVariable(token, railwayName, normalized);
     } else {
       missingSecrets.push(railwayName);
     }

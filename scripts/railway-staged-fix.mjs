@@ -9,11 +9,10 @@
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
-const RAILWAY_GRAPHQL = "https://backboard.railway.com/graphql/v2";
-const PROJECT_ID = "2d961fd8-a0a9-4ae6-93e1-3e209858e7f2";
-const ENVIRONMENT_ID = "5a065ed8-6c1b-4aa6-8968-7f5f3804c868";
-const SERVICE_ID = "0baa1261-4e18-4216-9377-e24e77655561";
-const MOUNT_PATH = "/app/gas-oracle-mcp/data";
+import { loadRailwayConfig, railwayGql } from "./railway-api.mjs";
+
+const config = loadRailwayConfig();
+const MOUNT_PATH = config.volumeMountPath;
 
 const { values: args } = parseArgs({
   options: {
@@ -22,22 +21,10 @@ const { values: args } = parseArgs({
 });
 
 async function gql(token, query, variables) {
-  const res = await fetch(RAILWAY_GRAPHQL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors?.length) {
-    throw new Error(body.errors.map((error) => error.message).join("; "));
-  }
-  return body.data;
+  return railwayGql(token, query, variables);
 }
 
-export function volumeIdsFromPatch(patch, serviceId = SERVICE_ID) {
+export function volumeIdsFromPatch(patch, serviceId = config.mcpServiceId) {
   const ids = new Set();
   for (const id of Object.keys(patch?.volumes || {})) ids.add(id);
   const mounts = patch?.services?.[serviceId]?.volumeMounts || {};
@@ -46,7 +33,7 @@ export function volumeIdsFromPatch(patch, serviceId = SERVICE_ID) {
 }
 
 /** Skip volumes that are mounted or are the primary MCP data volume. */
-export function shouldSkipVolumeId(volumeId, instances, serviceId = SERVICE_ID, mountPath = MOUNT_PATH) {
+export function shouldSkipVolumeId(volumeId, instances, serviceId = config.mcpServiceId, mountPath = MOUNT_PATH) {
   const mountedIds = new Set(instances.map((instance) => instance.volumeId));
   if (mountedIds.has(volumeId)) return true;
   const primaryMcp = instances.find(
@@ -67,7 +54,7 @@ async function listVolumeInstances(token) {
         }
       }
     }`,
-    { environmentId: ENVIRONMENT_ID },
+    { environmentId: config.environmentId },
   );
   return data.environment.volumeInstances.edges.map((edge) => edge.node);
 }
@@ -78,7 +65,7 @@ async function listProjectVolumes(token) {
     `query($projectId: String!) {
       project(id: $projectId) { volumes { edges { node { id name } } } }
     }`,
-    { projectId: PROJECT_ID },
+    { projectId: config.projectId },
   );
   return data.project.volumes.edges.map((edge) => edge.node);
 }
@@ -105,7 +92,7 @@ async function clearStagedUi(token, staged, instances) {
       `mutation($environmentId: String!, $input: EnvironmentConfig!) {
         environmentStageChanges(environmentId: $environmentId, input: $input, merge: false) { id status }
       }`,
-      { environmentId: ENVIRONMENT_ID, input: {} },
+      { environmentId: config.environmentId, input: {} },
     );
     await gql(
       token,
@@ -116,7 +103,7 @@ async function clearStagedUi(token, staged, instances) {
           skipDeploys: true
         )
       }`,
-      { environmentId: ENVIRONMENT_ID },
+      { environmentId: config.environmentId },
     );
     console.log("Committed empty staged patch (skipDeploys=true).");
     return;
@@ -138,7 +125,7 @@ async function clearStagedUi(token, staged, instances) {
           )
         }`,
         {
-          environmentId: ENVIRONMENT_ID,
+          environmentId: config.environmentId,
           patch: { volumes: { [volumeId]: { isDeleted: true } } },
         },
       );
@@ -157,7 +144,7 @@ async function clearStagedUi(token, staged, instances) {
         commitMessage: "Flush Railway staged-change worker"
       ) { id status diagnostics }
     }`,
-    { environmentId: ENVIRONMENT_ID, input: { version: 1, patches: [] } },
+    { environmentId: config.environmentId, input: { version: 1, patches: [] } },
   );
   console.log("Sent no-op change set to Railway.");
 }
@@ -173,7 +160,7 @@ async function main() {
         id status message patch lastAppliedError appliedAt
       }
     }`,
-    { environmentId: ENVIRONMENT_ID },
+    { environmentId: config.environmentId },
   );
   const staged = stagedData.environmentStagedChanges;
 
@@ -193,7 +180,7 @@ async function main() {
   const instances = await listVolumeInstances(token);
   const projectVolumes = await listProjectVolumes(token);
   const mcpMount = instances.find(
-    (instance) => instance.serviceId === SERVICE_ID && instance.mountPath === MOUNT_PATH,
+    (instance) => instance.serviceId === config.mcpServiceId && instance.mountPath === MOUNT_PATH,
   );
   if (mcpMount) {
     console.log(`MCP volume OK: ${mcpMount.volume.name} (${mcpMount.volumeId}) state=${mcpMount.state}`);
@@ -206,7 +193,7 @@ async function main() {
     console.log("Dry run only. Re-run with --apply to delete orphan volumes and nudge Railway.");
     if (staged.status === "APPLYING") {
       console.log("If the dashboard still shows Applying N changes, open the project and discard them:");
-      console.log(`  https://railway.com/project/${PROJECT_ID}`);
+      console.log(`  https://railway.com/project/${config.projectId}`);
     }
     return;
   }
@@ -220,7 +207,7 @@ async function main() {
     `query($environmentId: String!) {
       environmentStagedChanges(environmentId: $environmentId) { id status lastAppliedError appliedAt }
     }`,
-    { environmentId: ENVIRONMENT_ID },
+    { environmentId: config.environmentId },
   );
   console.log("");
   console.log("Staged changes after fix:");
@@ -229,7 +216,7 @@ async function main() {
   if (after.environmentStagedChanges?.status === "APPLYING") {
     console.log("");
     console.log("Railway still reports APPLYING — discard the change in the dashboard UI:");
-    console.log(`  https://railway.com/project/${PROJECT_ID}`);
+    console.log(`  https://railway.com/project/${config.projectId}`);
     console.log("Inspect banner → click X on each pending volume change.");
   }
 }

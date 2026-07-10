@@ -9,7 +9,9 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { findService, getEnvVars, getRenderApiKey, servicePublicUrl } from "./render-api.mjs";
+import { evaluateRailwayEnv, getRailwayToken, getServiceVariables, loadRailwayConfig } from "./railway-api.mjs";
 
+const DEFAULT_RAILWAY_URL = "https://gas-oracle-mcp-production.up.railway.app";
 const DEFAULT_RENDER_URL = "https://cdp-agent-0-01.onrender.com";
 
 const { values: args } = parseArgs({
@@ -150,7 +152,7 @@ export function summarizeReport(checks, { failOnWarn = false } = {}) {
 
 /**
  * @param {string} url
- * @param {{ mcpApiKey?: string, renderApiKey?: string, failOnWarn?: boolean, fetchImpl?: typeof fetch }} options
+ * @param {{ mcpApiKey?: string, renderApiKey?: string, railwayToken?: string, failOnWarn?: boolean, fetchImpl?: typeof fetch }} options
  */
 export async function runHealthReport(url, options = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -213,7 +215,8 @@ export async function runHealthReport(url, options = {}) {
     checks.push(evaluateSseWithAuth(sseAuthStatus));
   }
 
-  const renderApiKey = options.renderApiKey?.trim() || getRenderApiKey();
+  const isRailway = url.includes("railway.app");
+  const renderApiKey = !isRailway ? options.renderApiKey?.trim() || getRenderApiKey() : "";
   if (renderApiKey) {
     try {
       let service = await findService({ url });
@@ -242,6 +245,28 @@ export async function runHealthReport(url, options = {}) {
         level: "warning",
         ok: false,
         detail: `Render API error: ${error.message || error}`,
+      });
+    }
+  }
+
+  const railwayToken = isRailway ? options.railwayToken?.trim() || getRailwayToken() : "";
+  if (railwayToken) {
+    try {
+      const config = loadRailwayConfig({ publicUrl: url });
+      const vars = await getServiceVariables(railwayToken, config);
+      checks.push(...evaluateRailwayEnv(vars));
+      checks.push({
+        name: "railway_service",
+        level: "warning",
+        ok: true,
+        detail: `${config.mcpServiceName} (${config.mcpServiceId}) @ ${url}`,
+      });
+    } catch (error) {
+      checks.push({
+        name: "railway_service",
+        level: "warning",
+        ok: false,
+        detail: `Railway API error: ${error.message || error}`,
       });
     }
   }
@@ -285,14 +310,16 @@ export function formatMarkdownReport(report, url) {
 async function main() {
   const url = (
     args.url ||
+    process.env.RAILWAY_URL ||
     process.env.RENDER_URL ||
     process.env.PUBLIC_URL ||
-    DEFAULT_RENDER_URL
+    DEFAULT_RAILWAY_URL
   ).replace(/\/$/, "");
 
   const report = await runHealthReport(url, {
     mcpApiKey: process.env.MCP_API_KEY,
     renderApiKey: process.env.RENDER_API_KEY,
+    railwayToken: process.env.RAILWAY_TOKEN,
     failOnWarn: args["fail-on-warn"],
   });
 
