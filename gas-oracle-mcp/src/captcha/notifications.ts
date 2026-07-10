@@ -55,6 +55,13 @@ export function buildEmailSubject(alert: OperatorAlert): string {
   return `⚠️ CAPTCHA Alert: task ${shortId}`;
 }
 
+/** ntfy Title headers must be ASCII (ByteString); keep emoji in SMS/email body only. */
+export function buildNtfyTitle(alert: OperatorAlert): string {
+  const safe = sanitizeOperatorAlert(alert);
+  const shortId = safe.taskId.length > 8 ? `${safe.taskId.slice(0, 8)}...` : safe.taskId;
+  return `CAPTCHA Alert: task ${shortId}`;
+}
+
 export function buildEmailHtml(alert: OperatorAlert): string {
   return renderOperatorAlertEmail(sanitizeOperatorAlert(alert));
 }
@@ -197,7 +204,7 @@ export async function notifyOperator(alert: OperatorAlert): Promise<void> {
 
   if (notifications.push) {
     const safe = sanitizeOperatorAlert(alert);
-    promises.push(sendPush(emailSubject, smsBody, safe.solveUrl));
+    promises.push(sendPush(buildNtfyTitle(alert), smsBody, safe.solveUrl));
   }
 
   if (promises.length === 0) {

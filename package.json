@@ -24,6 +24,8 @@
     "verify:cursor-mcp": "node scripts/verify-cursor-mcp.mjs",
     "railway:diagnose": "node scripts/railway-diagnose.mjs",
     "railway:init": "node scripts/railway-init.mjs",
+    "railway:inbox-signup": "node scripts/railway-inbox-signup.mjs",
+    "captcha:hitl": "node -e \"import('./scripts/hitl-captcha.mjs').then(m=>console.log('hitl-captcha module ready'))\"",
     "render:diagnose": "node scripts/render-diagnose.mjs",
     "render:provision": "node scripts/render-provision.mjs",
     "render:provision-notifications": "node scripts/render-provision-notifications.mjs",

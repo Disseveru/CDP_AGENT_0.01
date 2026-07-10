@@ -151,9 +151,9 @@ async function sendTestNtfy() {
   }
 
   const solveUrl = `${publicUrl}/solve/test-ntfy-setup?token=test`;
-  const body = `⚠️ CAPTCHA Alert: Agent task test-ntfy-setup is waiting. Solve here: ${solveUrl}`;
+  const body = `CAPTCHA Alert: Agent task test-ntfy-setup is waiting. Solve here: ${solveUrl}`;
   const headers = {
-    Title: "⚠️ CAPTCHA Alert: test-ntfy-setup",
+    Title: "CAPTCHA Alert: test-ntfy-setup",
     Priority: "urgent",
     Tags: "warning,robot",
     Click: solveUrl,
