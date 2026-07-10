@@ -1,0 +1,72 @@
+# Daily production health report for AgentWire on Render.
+# Replaces Cursor-agent manual diagnose runs — runs entirely on GitHub Actions.
+name: Production health
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # 08:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-health
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RENDER_URL: https://cdp-agent-0-01.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production health report
+        id: health
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: npm run repo:health-report
+        continue-on-error: true
+
+      - name: Open GitHub issue on failure
+        if: steps.health.outcome == 'failure' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create production-health --color B60205 --description "Scheduled production health check failure" 2>/dev/null || true
+          TITLE="Production health check failed ($(date -u +%Y-%m-%d))"
+          EXISTING=$(gh issue list --label production-health --state open --json number --jq 'length')
+          if [ "$EXISTING" != "0" ]; then
+            echo "Open production-health issue already exists — skipping duplicate."
+            exit 0
+          fi
+          gh issue create \
+            --title "$TITLE" \
+            --label production-health \
+            --body "$(cat <<'EOF'
+          The scheduled **Production health** workflow detected failures on Render.
+
+          **Workflow:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          **Service:** https://cdp-agent-0-01.onrender.com
+
+          Review the workflow job summary for check details. A Cloud Agent can run \`npm run render:diagnose\` for a full trace.
+          EOF
+          )"
+
+      - name: Fail job when health report failed
+        if: steps.health.outcome == 'failure'
+        run: exit 1

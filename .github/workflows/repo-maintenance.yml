@@ -1,0 +1,52 @@
+# Weekly repo hygiene — stale cursor/* branches and duplicate open PRs.
+name: Repo maintenance
+
+on:
+  schedule:
+    - cron: "0 9 * * 0" # Sundays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Close orphaned PRs (deleted head branches)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr list --state open --json number,headRefName,title --limit 100 > prs.json
+          closed=0
+          while IFS= read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            branch=$(echo "$pr" | jq -r '.headRefName')
+            title=$(echo "$pr" | jq -r '.title')
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "keep #$number ($branch): $title"
+            else
+              echo "close #$number (branch deleted): $title"
+              gh pr close "$number" --comment "Auto-closed: head branch was deleted."
+              closed=$((closed + 1))
+            fi
+          done < <(jq -c '.[]' prs.json)
+          echo "Closed $closed orphaned PR(s)."
+
+      - name: Delete stale cursor/* branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run repo:cleanup-branches -- --apply

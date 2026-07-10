@@ -201,9 +201,15 @@ Or Render dashboard → your service → **Settings** → **Instance Type** → 
 
 **Free keepalive (GitHub Actions — primary):** `.github/workflows/render-keepalive.yml` pings `/health` and `/ready` every 5 minutes on the free GitHub Actions schedule.
 
+**Production health report (GitHub Actions):** `.github/workflows/production-health.yml` runs daily and writes a job summary. Failures open a `production-health` GitHub issue. Requires `RENDER_API_KEY` and `MCP_API_KEY` repository secrets (sync with `npm run github:sync-secrets -- --apply`).
+
 ```bash
 # Manual wake (also runs automatically on cron)
 gh workflow run render-keepalive.yml
+
+# Manual health report
+gh workflow run production-health.yml
+npm run repo:health-report
 ```
 
 **Cursor tmux fallback (opt-in):** set `RENDER_KEEPALIVE=1` during bootstrap or run `npm run render:keepalive:start` when GitHub Actions billing is unavailable.

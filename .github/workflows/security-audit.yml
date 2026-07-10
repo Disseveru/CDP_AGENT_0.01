@@ -1,0 +1,33 @@
+# npm dependency audit — root CLI + AgentWire MCP.
+name: Security audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Audit root dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Audit AgentWire dependencies
+        working-directory: gas-oracle-mcp
+        run: |
+          npm install --legacy-peer-deps
+          npm audit --audit-level=high
