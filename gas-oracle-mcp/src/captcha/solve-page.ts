@@ -3,26 +3,102 @@ import { escapeHtml, escapeHtmlAttribute } from "./html.js";
 import { CONFIG } from "../config.js";
 import type { CaptchaTask } from "./types.js";
 
+/** True when the target page host differs from AgentWire (Turnstile/reCAPTCHA sitekeys are domain-bound). */
+export function isCrossDomainCaptchaTarget(
+  pageurl: string,
+  publicUrl: string = CONFIG.publicUrl,
+): boolean {
+  try {
+    const targetHost = new URL(pageurl).hostname;
+    const solveHost = new URL(publicUrl).hostname;
+    return Boolean(targetHost && solveHost && targetHost !== solveHost);
+  } catch {
+    return false;
+  }
+}
+
+function renderCrossDomainDelegatedPage(
+  task: CaptchaTask,
+  solveToken: string,
+  targetHost: string,
+): string {
+  const taskId = escapeHtmlAttribute(task.task_id);
+  const pageurl = escapeHtml(task.pageurl);
+  const solveHost = escapeHtml(new URL(CONFIG.publicUrl).hostname);
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CAPTCHA delegated to agent</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top) 1.25rem env(safe-area-inset-bottom);
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+    p { margin: 0 0 0.75rem; line-height: 1.5; }
+    .meta { font-size: 0.8rem; color: #94a3b8; word-break: break-all; }
+    .warn {
+      font-size: 0.9rem;
+      color: #fde68a;
+      background: #422006;
+      border-radius: 12px;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    .ok {
+      font-size: 0.9rem;
+      color: #bbf7d0;
+      background: #14532d;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    code { font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <h1>No action needed on your phone</h1>
+  <p class="meta">Task ${taskId}</p>
+  <p class="meta">${pageurl}</p>
+  <div class="warn">
+    <p><strong>This CAPTCHA belongs to ${escapeHtml(targetHost)}</strong>, not ${solveHost}.
+    Cloudflare blocks solving it on this page (error 600010).</p>
+    <p>The cloud agent solves it automatically on the real site. You can close this tab.</p>
+  </div>
+  <div class="ok">
+    <p>Status updates when the agent finishes. Poll <code>/api/v1/captcha/status</code> with your poll token.</p>
+  </div>
+</body>
+</html>`;
+}
+
 export function renderSolvePage(task: CaptchaTask, solveToken: string): string {
+  let targetHost = "";
+  try {
+    targetHost = new URL(task.pageurl).hostname;
+  } catch {
+    targetHost = "";
+  }
+
+  if (isCrossDomainCaptchaTarget(task.pageurl)) {
+    return renderCrossDomainDelegatedPage(task, solveToken, targetHost);
+  }
+
   const { scriptUrl, globalName } = captchaWidgetScript(task.captcha_type);
   const sitekey = escapeHtmlAttribute(task.sitekey);
   const taskId = escapeHtmlAttribute(task.task_id);
   const pageurl = escapeHtml(task.pageurl);
   const solveTokenAttr = escapeHtmlAttribute(solveToken);
-
-  let targetHost = "";
-  let solveHost = "";
-  try {
-    targetHost = new URL(task.pageurl).hostname;
-    solveHost = new URL(CONFIG.publicUrl).hostname;
-  } catch {
-    targetHost = "";
-    solveHost = "";
-  }
-  const crossDomainNote =
-    targetHost && solveHost && targetHost !== solveHost
-      ? `<p class="warn">This CAPTCHA is for <strong>${escapeHtml(targetHost)}</strong>. Solving here only works when that site allows this domain (<code>${escapeHtml(solveHost)}</code>). For Railway and most third-party logins, complete the checkbox in the agent's desktop Chrome window instead.</p>`
-      : "";
+  const crossDomainNote = "";
 
   const widgetMount =
     task.captcha_type === "turnstile"
