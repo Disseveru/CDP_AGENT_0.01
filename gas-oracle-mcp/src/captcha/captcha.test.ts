@@ -322,13 +322,36 @@ test("parseOperatorAlertPageUrl accepts http target pages", () => {
   assert.equal(parseOperatorAlertPageUrl("http://example.com/login"), "http://example.com/login");
 });
 
-test("buildSmsBody succeeds when target page uses http", () => {
+test("buildSmsBody succeeds when target page uses http on same host", () => {
   const body = buildSmsBody({
     ...baseAlert,
-    pageUrl: "http://example.com/login",
+    pageUrl: "http://localhost:4021/login",
+    solveUrl: "https://localhost:4021/solve/task-123?token=operator-secret",
   });
-  assert.match(body, /Solve here: https:\/\//);
-  assert.doesNotMatch(body, /http:\/\/example\.com\/login/);
+  assert.match(body, /Solve here: https:\/\/localhost:4021/);
+});
+
+test("buildSmsBody tells operator not to use phone solve links for cross-domain targets", () => {
+  const body = buildSmsBody({
+    ...baseAlert,
+    pageUrl: "https://railway.com/login",
+  });
+  assert.match(body, /No phone action/i);
+  assert.match(body, /600010/);
+  assert.match(body, /railway\.com/);
+  assert.doesNotMatch(body, /Solve here:/);
+});
+
+test("buildSmsBody includes sanitized task id and solve URL for same-domain targets", () => {
+  const body = buildSmsBody({
+    ...baseAlert,
+    pageUrl: "http://localhost:4021/login",
+    solveUrl: "https://localhost:4021/solve/550e8400-e29b-41d4-a716-446655440000?token=operator-secret",
+  });
+  assert.equal(
+    body,
+    "⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://localhost:4021/solve/550e8400-e29b-41d4-a716-446655440000?token=operator-secret",
+  );
 });
 
 test("buildEmailHtml renders http page URLs as text without clickable links", () => {
@@ -341,14 +364,6 @@ test("buildEmailHtml renders http page URLs as text without clickable links", ()
 
   assert.match(html, /http:\/\/example\.com\/login/);
   assert.doesNotMatch(html, /href="http:\/\/example\.com\/login"/);
-});
-
-test("buildSmsBody includes sanitized task id and solve URL", () => {
-  const body = buildSmsBody(baseAlert);
-  assert.equal(
-    body,
-    "⚠️ CAPTCHA Alert: Agent task 550e8400-e29b-41d4-a716-446655440000 is waiting. Solve here: https://gas-oracle-mcp-production.up.railway.app/solve/550e8400-e29b-41d4-a716-446655440000?token=operator-secret",
-  );
 });
 
 test("buildEmailSubject truncates long task ids safely", () => {
@@ -410,19 +425,25 @@ test("renderOperatorSmsConsentPage documents operator opt-in for Twilio verifica
   assert.doesNotMatch(html, /<script>/);
 });
 
-test("renderSolvePage warns when target page host differs from AgentWire public URL", () => {
+test("renderSolvePage delegates cross-domain targets without rendering a broken widget", () => {
   const task: CaptchaTask = {
     ...baseTask(),
     captcha_type: "turnstile",
     pageurl: "https://railway.com/login",
   };
   const html = renderSolvePage(task, task.solve_token);
-  assert.match(html, /desktop Chrome/i);
+  assert.match(html, /No action needed on your phone/i);
+  assert.match(html, /600010/);
   assert.match(html, /railway\.com/);
+  assert.doesNotMatch(html, /cf-turnstile/);
+  assert.doesNotMatch(html, /id="submit-btn"/);
 });
 
 test("renderSolvePage injects task id, solve token, and solve endpoint safely", () => {
-  const task = baseTask();
+  const task: CaptchaTask = {
+    ...baseTask(),
+    pageurl: "http://localhost:4021/login",
+  };
   const html = renderSolvePage(task, task.solve_token);
 
   const taskIdConstant = extractScriptConstant(html, "TASK_ID");
@@ -448,6 +469,7 @@ test("renderSolvePage escapes malicious sitekey and task id values", () => {
   const task: CaptchaTask = {
     ...baseTask(),
     captcha_type: "turnstile",
+    pageurl: "http://localhost:4021/login",
     task_id: '"><script>alert("xss")</script>',
     sitekey: '" onerror="alert(1)',
     solve_token: 'token"onclick="alert(1)',

@@ -42,6 +42,7 @@
     "railway:provision-notifications": "node scripts/railway-provision-notifications.mjs",
     "railway:staged-fix": "node scripts/railway-staged-fix.mjs",
     "captcha:setup": "node scripts/captcha-hitl-setup.mjs",
+    "captcha:operator-solve": "node scripts/operator-solve-captcha.mjs",
     "captcha:test-email": "node scripts/captcha-test-email.mjs",
     "twilio:tollfree-verify": "node scripts/twilio-tollfree-verify.mjs",
     "cdp:wallet-audit": "node scripts/cdp-wallet-audit.mjs",

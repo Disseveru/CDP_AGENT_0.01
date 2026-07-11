@@ -6,6 +6,7 @@ import {
   parseOperatorAlertPageUrl,
   parseOperatorAlertSolveUrl,
 } from "./notification-config.js";
+import { isCrossDomainCaptchaTarget } from "./solve-page.js";
 import type { CaptchaType, SanitizedOperatorAlert } from "./types.js";
 
 export interface OperatorAlert {
@@ -46,6 +47,19 @@ function sanitizeOperatorAlert(alert: OperatorAlert): SanitizedOperatorAlert {
 
 export function buildSmsBody(alert: OperatorAlert): string {
   const safe = sanitizeOperatorAlert(alert);
+  if (isCrossDomainCaptchaTarget(safe.pageUrl)) {
+    let targetHost = "the target site";
+    try {
+      targetHost = new URL(safe.pageUrl).hostname;
+    } catch {
+      /* keep default */
+    }
+    return (
+      `CAPTCHA Alert: Agent task ${safe.taskId} needs ${targetHost}. ` +
+      `No phone action — the cloud agent solves it on ${targetHost} automatically. ` +
+      `Ignore solve links on this domain (Cloudflare error 600010).`
+    );
+  }
   return `⚠️ CAPTCHA Alert: Agent task ${safe.taskId} is waiting. Solve here: ${safe.solveUrl}`;
 }
 
@@ -204,7 +218,8 @@ export async function notifyOperator(alert: OperatorAlert): Promise<void> {
 
   if (notifications.push) {
     const safe = sanitizeOperatorAlert(alert);
-    promises.push(sendPush(buildNtfyTitle(alert), smsBody, safe.solveUrl));
+    const clickUrl = isCrossDomainCaptchaTarget(safe.pageUrl) ? safe.pageUrl : safe.solveUrl;
+    promises.push(sendPush(buildNtfyTitle(alert), smsBody, clickUrl));
   }
 
   if (promises.length === 0) {
