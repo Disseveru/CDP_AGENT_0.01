@@ -1262,6 +1262,10 @@ async function main(): Promise<void> {
     handleDiscoveryRequest(req, res, state).catch(next);
   });
 
+  app.get("/.well-known/x402", (req, res, next) => {
+    handleDiscoveryRequest(req, res, state).catch(next);
+  });
+
   app.post("/api/v1/captcha/submit", async (req, res, next) => {
     if (!(await allowCaptchaRequest(req))) {
       res.status(429).json({ error: "Rate limit exceeded" });
