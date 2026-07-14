@@ -104,7 +104,7 @@ export const CONFIG = {
     extractLinks: process.env.PRICE_EXTRACT_LINKS || "$0.008",
     relayPost: process.env.PRICE_RELAY_POST || "$0.015",
     captchaSubmit: process.env.PRICE_CAPTCHA_SUBMIT || "$0.050",
-    captchaBypass: process.env.PRICE_CAPTCHA_BYPASS || "$0.075",
+    captchaBypass: process.env.PRICE_CAPTCHA_BYPASS || "$0.25",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
