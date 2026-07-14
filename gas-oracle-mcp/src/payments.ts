@@ -61,7 +61,7 @@ const CAPTCHA_SUBMIT_OUTPUT_SCHEMA = {
   properties: {
     task_id: { type: "string" },
     status: { type: "string" },
-    solve_url: { type: "string", format: "uri" },
+    solve_url: { type: "string", format: "uri-reference" },
     poll_token: { type: "string" },
   },
   required: ["task_id", "status", "solve_url"],
@@ -438,3 +438,4 @@ export function buildDiscoveryExtension(meta: ToolDiscoveryMetadata): Record<str
 
   return extensions;
 }
+
