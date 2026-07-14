@@ -55,6 +55,7 @@ import {
 } from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
 import type { OracleIdentity } from "./wallet.js";
+import { metricsCollector } from "./metrics.js";
 
 interface PaidToolDefinition {
   name: string;
@@ -683,6 +684,8 @@ async function handleCaptchaSubmitRequest(
     console.error("[captcha] Operator alert failed:", error);
   });
 
+  metricsCollector.recordPayment(Number(CONFIG.prices.captchaSubmit.replace(/[^0-9.]/g, "")) || 0);
+
   for (const [name, value] of Object.entries(settlement.headers)) {
     res.setHeader(name, value);
   }
@@ -843,6 +846,11 @@ function buildMcpServer(state: RuntimeState): McpServer {
                 }
               }
               pendingDrainAcks.delete(paymentKey);
+            }
+
+            if (settlement.success) {
+              const amount = Number(definition.price.replace(/[^0-9.]/g, "")) || 0;
+              metricsCollector.recordPayment(amount);
             }
 
             console.log(`[x402] Settled ${definition.name} tx=${settlement.transaction}`);
@@ -1177,12 +1185,14 @@ async function main(): Promise<void> {
       return;
     }
 
+    const mcpRequestStartedAt = Date.now();
     try {
       const mcpServer = buildMcpServer(state);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       res.on("close", () => {
         transport.close();
         mcpServer.close();
+        metricsCollector.recordRequest(Date.now() - mcpRequestStartedAt, res.statusCode < 400);
       });
       await mcpServer.connect(transport);
       await transport.handleRequest(req, res, req.body);
@@ -1216,6 +1226,7 @@ async function main(): Promise<void> {
       return;
     }
 
+    const sseRequestStartedAt = Date.now();
     try {
       res.setHeader("X-Accel-Buffering", "no");
       const transport = new SSEServerTransport(CONFIG.sseMessagesEndpoint, res);
@@ -1223,6 +1234,7 @@ async function main(): Promise<void> {
       res.on("close", () => {
         sseTransports.delete(transport.sessionId);
         void transport.close();
+        metricsCollector.recordRequest(Date.now() - sseRequestStartedAt, res.statusCode < 400);
       });
 
       const mcpServer = buildMcpServer(state);
@@ -1381,6 +1393,11 @@ async function main(): Promise<void> {
       redis: isRedisEnabled() ? redis : { ok: false, detail: "disabled" },
       error: state.error,
     });
+  });
+
+  app.get("/metrics", (_req: Request, res: Response) => {
+    res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(metricsCollector.export());
   });
 
   app.get("/ready", (_req, res) => {
