@@ -405,6 +405,17 @@ function buildServiceCard(state: RuntimeState): Record<string, unknown> {
     endpoint: `${CONFIG.publicUrl}/mcp`,
     sseEndpoint: `${CONFIG.publicUrl}/sse`,
     webhooks: `${CONFIG.publicUrl}/hooks/{inboxId}`,
+    captchaEndpoint: {
+      url: `${CONFIG.publicUrl}/api/v1/captcha/submit`,
+      method: "POST",
+      price: CONFIG.prices.captchaBypass,
+      description: `Human CAPTCHA solving: reCAPTCHA, hCaptcha, Turnstile. Costs ${CONFIG.prices.captchaBypass} USDC per solve.`,
+      supportedTypes: ["recaptcha", "hcaptcha", "turnstile"],
+      example: {
+        request: { sitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI", pageurl: "https://example.com", captcha_type: "recaptcha" },
+        response: { task_id: "uuid", status: "pending", solve_url: `${CONFIG.publicUrl}/solve/uuid` }
+      }
+    },
     paymentNetwork: CONFIG.caip2Network,
     facilitator: CONFIG.facilitatorUrl,
     payTo: state.identity?.address,
