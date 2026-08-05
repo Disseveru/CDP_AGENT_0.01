@@ -105,6 +105,9 @@ export const CONFIG = {
     relayPost: process.env.PRICE_RELAY_POST || "$0.015",
     captchaSubmit: process.env.PRICE_CAPTCHA_SUBMIT || "$0.050",
     captchaBypass: process.env.PRICE_CAPTCHA_BYPASS || "$0.25",
+    gasOracle: process.env.PRICE_GAS_ORACLE || "$0.002",
+    getBalance: process.env.PRICE_GET_BALANCE || "$0.002",
+    getTxStatus: process.env.PRICE_GET_TX_STATUS || "$0.002",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
@@ -115,6 +118,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.2.0",
+  serviceVersion: "1.3.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
