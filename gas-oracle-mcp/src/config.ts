@@ -118,6 +118,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.4.0",
+  serviceVersion: "1.5.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
