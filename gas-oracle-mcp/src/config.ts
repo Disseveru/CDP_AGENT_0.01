@@ -108,6 +108,11 @@ export const CONFIG = {
     gasOracle: process.env.PRICE_GAS_ORACLE || "$0.002",
     getBalance: process.env.PRICE_GET_BALANCE || "$0.002",
     getTxStatus: process.env.PRICE_GET_TX_STATUS || "$0.002",
+    gasOracleBatch: process.env.PRICE_GAS_ORACLE_BATCH || "$0.005",
+    estimateTxCost: process.env.PRICE_ESTIMATE_TX_COST || "$0.002",
+    agentFuelCheck: process.env.PRICE_AGENT_FUEL_CHECK || "$0.006",
+    x402SettlementReady: process.env.PRICE_X402_SETTLEMENT_READY || "$0.008",
+    txPlan: process.env.PRICE_TX_PLAN || "$0.010",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
@@ -118,6 +123,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.4.0",
+  serviceVersion: "1.5.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
