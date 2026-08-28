@@ -4,127 +4,31 @@
 
 **Webhook inbox + web fetch for autonomous AI agents.** Agents pay USDC via [x402](https://x402.org) to use infrastructure they cannot host themselves.
 
-## Why agents pay for this repeatedly
+## Agent commerce SKUs (v1.5)
 
-| Problem | AgentWire solution |
-|---|---|
-| Agents can't receive inbound HTTP (Stripe, GitHub, human replies) | **Webhook inbox** — POST events in, `drain_inbox` pulls them into the agent loop |
-| Agents can't browse the web reliably | **`fetch_url`** — returns clean text + SHA-256 content hash from any public URL |
+These tools are intended for other agents buying infrastructure on Agentic Market / x402 Bazaar:
 
-This is real infrastructure, not a demo. Every agent loop that waits for external input will call `drain_inbox` over and over.
-
-`GET /` is an x402 v2 paid discovery endpoint for CDP Bazaar indexing. Unpaid requests return `402 Payment Required` with the base64 `PAYMENT-REQUIRED` header and Bazaar metadata.
-
-## Tools
-
-| Tool | Price | What it does |
+| Tool | Default price | Why agents buy it |
 |---|---|---|
-| `create_inbox` | **free** | Creates `{ inboxId, secret, webhookUrl }` |
-| `drain_inbox` | $0.005 | Pull all pending webhook events and clear the queue |
-| `peek_inbox` | $0.002 | Read events without clearing |
-| `fetch_url` | $0.012 | Fetch a public URL → agent-readable text + content hash |
-| `relay_post` | $0.015 | POST JSON to a public URL and return the response |
-| `ping` | **free** | Health check (includes storage/redis status) |
+| `gas_oracle` | $0.002 | Live EIP-1559 fees + USD cost estimates |
+| `gas_oracle_batch` | $0.005 | Same snapshot across up to 6 chains |
+| `estimate_tx_cost` | $0.002 | Price a custom gasLimit |
+| `get_balance` | $0.002 | Native or ERC-20 balance |
+| `get_tx_status` | $0.002 | Pending / success / revert for a hash |
+| `agent_fuel_check` | $0.006 | Native + USDC + gas readiness |
+| `x402_settlement_ready` | $0.008 | Can this wallet pay a quoted USDC amount right now? |
+| `tx_plan` | $0.010 | Oracle + fuel + affordability bundle |
 
-### Production Railway services
+Existing inbox / fetch / CAPTCHA tools are unchanged. After merge, Railway/Render redeploy will advertise the new tools on `/.well-known/x402` and MCP.
 
-AgentWire production runs as a multi-service Railway project:
-
-| Service | Role |
-|---|---|
-| **gas-oracle-mcp** | MCP server (this app) |
-| **Postgres** | Durable inbox storage — wired via `DATABASE_URL=${{Postgres.DATABASE_URL}}` |
-| **Redis** | Webhook rate limiting — wired via private `REDIS_URL` |
-| **Volume** | Mounted at `/app/gas-oracle-mcp/data` for file-backed fallback |
-
-From the repo root, provision or refresh service wiring:
-
-```bash
-RAILWAY_TOKEN=... npm run railway:provision -- --redeploy
-```
-
-`npm run railway:diagnose` reports `/health`, `/ready`, MCP auth, and Railway variable format checks.
-
-## Deploy in 10 minutes (no coding — works from your phone)
-
-**Railway trial ended?** Use the free Render guide: [docs/RENDER-DEPLOY.md](../docs/RENDER-DEPLOY.md) (Render + Neon Postgres + Gmail alerts, $0/month).
-
-**Recommended:** [docs/RAILWAY-DEPLOY.md](../docs/RAILWAY-DEPLOY.md) — always-on hosting, no cold starts. Bootstrap with `npm run railway:init -- --redeploy`.
-
-### 1. Get CDP keys (one time)
-
-1. Go to [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com) on your phone browser
-2. Create an **API key** → copy **API key ID** + **secret**
-3. Go to **Wallet Secret** → create and copy it
-
-### 2. Deploy on Railway (free tier works for testing)
-
-1. Go to [railway.com](https://railway.com) → **New Project** → **Deploy from GitHub repo**
-2. Select this repo (no Root Directory change needed — `/railway.toml` at the repo root builds `gas-oracle-mcp/`, but the deployed service itself is AgentWire)
-3. Open **Variables** and add:
-   - `CDP_API_KEY` (or `CDP_API_KEY_ID`) for the API key ID
-   - `CDP_PRIVATE_KEY` (or `CDP_API_KEY_SECRET`) for the API key secret / PEM
-   - `CDP_WALLET_SECRET`
-   - Optional: `PAY_TO_ADDRESS=0x...` to reuse an existing payout wallet and skip CDP wallet creation on boot
-   - `NETWORK` = `base` (real money, Bazaar-discoverable) or `base-sepolia` (testnet)
-   - Facilitator defaults to the CDP endpoint (`https://api.cdp.coinbase.com/platform/v2/x402`) per the [sellers quickstart](https://docs.cdp.coinbase.com/x402/quickstart-for-sellers). Override with `FACILITATOR_URL=https://x402.org/facilitator` for signup-free testnet testing.
-4. **Networking** → **Generate Domain**
-5. Deploy. Visit `https://YOUR-DOMAIN.up.railway.app/health` — should show `{"status":"ok"}`. Then visit `/ready` to confirm CDP/x402 initialization completed.
-
-Your public URLs:
-- MCP endpoint: `https://YOUR-DOMAIN.up.railway.app/mcp`
-- Cursor SSE endpoint: `https://YOUR-DOMAIN.up.railway.app/sse`
-- Webhooks: `https://YOUR-DOMAIN.up.railway.app/hooks/{inboxId}`
-
-### 4. Connect Cursor IDE (remote MCP over SSE)
-
-From the repo root:
-
-```bash
-npm run setup:cursor-mcp -- https://YOUR-DOMAIN.up.railway.app
-```
-
-Copy the printed `MCP_API_KEY` into **Railway → Variables**, redeploy, then verify:
-
-```bash
-npm run verify:cursor-mcp
-```
-
-Restart Cursor, open **Settings → MCP**, and enable **gas-oracle-mcp**.
-
-If the CDP facilitator fails to initialize on Railway, AgentWire still serves free tools (`ping`, `create_inbox`) over SSE while paid x402 tools remain unavailable until credentials are fixed.
-
-### 3. Go live on mainnet (real USDC)
-
-Keep `NETWORK=base` in Railway variables and redeploy. After the first paid call settles through the CDP facilitator, your service auto-lists in the **x402 Bazaar** where buyer agents discover it.
-
-## How it works (agent workflow)
-
-```
-1. Agent calls create_inbox (free)
-   → gets webhookUrl like https://your-app.up.railway.app/hooks/abc123
-
-2. You configure Stripe/GitHub/a form to POST to that URL
-
-3. Agent loop calls drain_inbox (paid, $0.005)
-   → receives all pending events as JSON
-
-4. Agent calls fetch_url (paid, $0.012) when it needs web content
-```
-
-## Test locally (if you have a laptop later)
+## Test locally
 
 ```bash
 cd gas-oracle-mcp
 npm install --legacy-peer-deps
-cp .env.example .env   # paste your 3 CDP keys
+cp .env.example .env
+npm test
 npm start
-npm run smoke-test     # free
-npm run paid-test      # settles real testnet USDC
 ```
 
-Cloud secret managers often inject `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET`; AgentWire accepts those aliases too.
-
-## Revenue
-
-Every paid tool call settles USDC to your CDP wallet (`payTo` address printed on boot). On testnet it's fake USDC; on mainnet it's real.
+Revenue from paid tool calls settles USDC to the CDP / `PAY_TO_ADDRESS` wallet printed on boot.
