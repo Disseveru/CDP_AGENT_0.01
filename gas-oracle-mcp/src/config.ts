@@ -38,7 +38,6 @@ export const CDP_FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x40
 /** Signup-free permissionless facilitator fallback when CDP init fails. */
 export const DEFAULT_PERMISSIONLESS_FACILITATOR = "https://facilitator.xpay.sh";
 
-
 function isCdpFacilitatorUrl(url: string): boolean {
   try {
     return new URL(url).hostname === "api.cdp.coinbase.com";
@@ -106,8 +105,13 @@ export const CONFIG = {
     captchaSubmit: process.env.PRICE_CAPTCHA_SUBMIT || "$0.050",
     captchaBypass: process.env.PRICE_CAPTCHA_BYPASS || "$0.25",
     gasOracle: process.env.PRICE_GAS_ORACLE || "$0.002",
+    gasOracleBundle: process.env.PRICE_GAS_ORACLE_BUNDLE || "$0.008",
+    estimateTxCost: process.env.PRICE_ESTIMATE_TX_COST || "$0.002",
     getBalance: process.env.PRICE_GET_BALANCE || "$0.002",
     getTxStatus: process.env.PRICE_GET_TX_STATUS || "$0.002",
+    planAgentSpend: process.env.PRICE_PLAN_AGENT_SPEND || "$0.001",
+    verifySettlement: process.env.PRICE_VERIFY_SETTLEMENT || "$0.003",
+    cheapestChain: process.env.PRICE_CHEAPEST_CHAIN || "$0.006",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
@@ -118,6 +122,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.4.0",
+  serviceVersion: "1.5.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
