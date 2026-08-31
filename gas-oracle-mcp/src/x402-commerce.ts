@@ -8,14 +8,12 @@
 import { formatUnits, isAddress, parseAbiItem, type Address, type Hash, type Hex } from "viem";
 
 import { planAgentSpend, parseUsdAmount, type PlanAgentSpendResult } from "./agent-commerce.js";
+import { getTxStatus, type GasNetwork, type GetTxStatusResult } from "./gas.js";
 import {
-  getGasPublicClient,
-  getTxStatus,
-  parseEvmAddress,
-  resolveGasNetwork,
-  type GasNetwork,
-  type GetTxStatusResult,
-} from "./gas.js";
+  getCommerceClient,
+  parseCommerceAddress,
+  resolveCommerceNetwork,
+} from "./x402-rpc.js";
 
 const TRANSFER_EVENT = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 value)",
@@ -178,9 +176,9 @@ export async function inspectPayTo(input: {
   address: string;
   network?: string;
 }): Promise<InspectPayToResult> {
-  const network = resolveGasNetwork(input.network || "base");
-  const address = parseEvmAddress(input.address, "payTo");
-  const client = getGasPublicClient(network);
+  const network = resolveCommerceNetwork(input.network || "base");
+  const address = parseCommerceAddress(input.address, "payTo");
+  const client = getCommerceClient(network);
   const [code, nonce] = await Promise.all([
     client.getCode({ address }),
     client.getTransactionCount({ address }),
@@ -227,9 +225,9 @@ export async function verifyUsdcTransfer(input: {
   expectedTo?: string;
   expectedMinUsdc?: unknown;
 }): Promise<VerifyUsdcTransferResult> {
-  const network = resolveGasNetwork(input.network || "base");
+  const network = resolveCommerceNetwork(input.network || "base");
   const usdc = USDC_BY_NETWORK[network];
-  const expectedTo = input.expectedTo ? parseEvmAddress(input.expectedTo, "expectedTo") : null;
+  const expectedTo = input.expectedTo ? parseCommerceAddress(input.expectedTo, "expectedTo") : null;
   const expectedMinUsdc =
     input.expectedMinUsdc === undefined || input.expectedMinUsdc === null
       ? null
@@ -249,7 +247,7 @@ export async function verifyUsdcTransfer(input: {
     };
   }
 
-  const client = getGasPublicClient(network);
+  const client = getCommerceClient(network);
   const receipt = await client.getTransactionReceipt({ hash: tx.hash as Hash });
   const matches: UsdcTransferMatch[] = [];
 
