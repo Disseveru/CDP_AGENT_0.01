@@ -1,6 +1,6 @@
 {
   "name": "agentwire-mcp",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "AgentWire: x402-paid MCP server. Webhook inbox, web fetch, multi-chain gas oracle, spend planner, settlement verify, and CAPTCHA HITL for autonomous agents.",
   "type": "module",
   "main": "dist/server.js",
@@ -13,7 +13,7 @@
     "paid-test:mainnet": "tsx scripts/mainnet-paid-test.ts",
     "bazaar-settle": "tsx scripts/production-bazaar-settle.ts",
     "sse-test": "tsx scripts/sse-test.ts",
-    "test": "OPERATOR_SMS_NUMBER=+15555550100 node --import tsx --test src/wallet.test.ts src/payments.test.ts src/store.test.ts src/services.test.ts src/storage/file.test.ts src/http-safety.test.ts src/deploy-env.test.ts src/redis.test.ts src/captcha/captcha.test.ts src/gas-oracle.test.ts src/gas.test.ts src/agent-commerce.test.ts",
+    "test": "OPERATOR_SMS_NUMBER=+15555550100 node --import tsx --test src/wallet.test.ts src/payments.test.ts src/store.test.ts src/services.test.ts src/storage/file.test.ts src/http-safety.test.ts src/deploy-env.test.ts src/redis.test.ts src/captcha/captcha.test.ts src/gas-oracle.test.ts src/gas.test.ts src/agent-commerce.test.ts src/x402-commerce.test.ts",
     "migrate": "tsx src/migrate.ts"
   },
   "engines": {
