@@ -13,6 +13,9 @@ test("secrets manifest lists operational keys for GitHub sync", () => {
   assert.ok(manifest.secrets.includes("RENDER_API_KEY"));
   assert.ok(manifest.secrets.includes("MCP_API_KEY"));
   assert.ok(manifest.secrets.includes("CDP_API_KEY"));
+  assert.ok(manifest.secrets.includes("DSA_PRIVATE_KEY"));
+  assert.ok(manifest.secrets.includes("MNEMONIC_PHRASE"));
   assert.ok(manifest.envAliases.SMTP_PASS.includes("SMTH_PASS"));
+  assert.ok(manifest.envAliases.DSA_PRIVATE_KEY.includes("EOA_PRIVATE_KEY"));
   assert.equal(manifest.variables.RENDER_URL, "https://cdp-agent-0-01.onrender.com");
 });
