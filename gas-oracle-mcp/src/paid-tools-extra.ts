@@ -4,6 +4,7 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import { compareX402Sellers, decodePaymentRequiredPayload, probeX402Endpoint, scoreSellerHealth } from "./x402-preflight.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -175,5 +176,65 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
+  },
+  {
+    name: "probe_x402",
+    description: `Probe a public URL for an x402 402 quote without paying. Returns accepts, cheapest price, and latency. Costs ${CONFIG.prices.probeX402} USDC per call.`,
+    price: CONFIG.prices.probeX402,
+    zodShape: {
+      url: z.string(),
+      method: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { url: { type: "string" }, method: { type: "string", enum: ["GET", "HEAD", "POST"] } },
+      required: ["url"],
+    },
+    example: { url: "https://api.exa.ai/search", method: "GET" },
+    handler: async (args) => probeX402Endpoint({ url: String(args.url), method: args.method as string | undefined }),
+  },
+  {
+    name: "compare_x402_sellers",
+    description: `Compare up to 8 x402 seller URLs and rank live quotes. Costs ${CONFIG.prices.compareX402} USDC per call.`,
+    price: CONFIG.prices.compareX402,
+    zodShape: {
+      urls: z.array(z.string()).min(1).max(8),
+      method: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        urls: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
+        method: { type: "string" },
+      },
+      required: ["urls"],
+    },
+    example: { urls: ["https://api.exa.ai/search", "https://api.tavily.com/search"] },
+    handler: async (args) => compareX402Sellers({ urls: args.urls as string[], method: args.method as string | undefined }),
+  },
+  {
+    name: "decode_payment_required",
+    description: `Decode a PAYMENT-REQUIRED header or 402 JSON body. Costs ${CONFIG.prices.decodePaymentRequired} USDC per call.`,
+    price: CONFIG.prices.decodePaymentRequired,
+    zodShape: { payload: z.string() },
+    jsonSchema: { type: "object", properties: { payload: { type: "string" } }, required: ["payload"] },
+    example: { payload: "eyJ4NDAyVmVyc2lvbiI6Mn0=" },
+    handler: async (args) => decodePaymentRequiredPayload(String(args.payload)),
+  },
+  {
+    name: "score_x402_seller",
+    description: `Probe + health score for a seller endpoint. Costs ${CONFIG.prices.scoreX402Seller} USDC per call.`,
+    price: CONFIG.prices.scoreX402Seller,
+    zodShape: { url: z.string(), method: z.string().optional() },
+    jsonSchema: {
+      type: "object",
+      properties: { url: { type: "string" }, method: { type: "string" } },
+      required: ["url"],
+    },
+    example: { url: "https://api.exa.ai/search" },
+    handler: async (args) => {
+      const probe = await probeX402Endpoint({ url: String(args.url), method: args.method as string | undefined });
+      return { probe, health: scoreSellerHealth(probe) };
+    },
   },
 ];

@@ -1,4 +1,4 @@
-# x402 / Agentic Market — opportunity notes (2026-08-30)
+# x402 / Agentic Market — opportunity notes (2026-09-01)
 
 Snapshot for sellers listing on Agentic.Market and similar x402 directories.
 
@@ -21,7 +21,21 @@ Inference routers, scrapers, generic price feeds, image gen, workflow executors,
 3. Settlement verification — confirm a hash landed and `to` matches `payTo`.
 4. Inbound webhook inboxes — already shipped as AgentWire `drain_inbox`.
 5. HITL CAPTCHA — already shipped; still scarce as a paid MCP SKU.
+6. Seller preflight — probe 402 quotes, compare live prices, decode PAYMENT-REQUIRED, score liveness.
 
 ## AgentWire SKUs added in 1.5.0
 
 `quote_gas`, `quote_gas_bundle`, `estimate_tx_cost`, `get_balance`, `get_tx_status`, `plan_agent_spend`, `verify_settlement`, `cheapest_chain`.
+
+## AgentWire SKUs added in 1.6.0
+
+`probe_x402`, `compare_x402_sellers`, `decode_payment_required`, `score_x402_seller`.
+
+These fill a gap on Agentic.Market: curated catalogs list sellers, but buyer agents still overpay dead or expensive endpoints. Preflight is a repurchase SKU (every orchestration loop).
+
+### Catalog snapshot (2026-09-01, api.agentic.market)
+
+- ~50 featured services in the official directory; Data/Search/Inference dominate.
+- Marked new: The Graph, Parallel, Otto AI.
+- Crowded: inference proxies, scrapers, generic price feeds.
+- Still thin: seller liveness probes, 402 header decode, spend-policy math, settlement verify, HITL CAPTCHA (already in this repo).
