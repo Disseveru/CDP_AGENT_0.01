@@ -4,6 +4,13 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import {
+  probeX402Endpoint,
+  rankAgenticSellers,
+  inspectPayTo,
+  getUsdcInventory,
+  adviseCongestion,
+} from "./marketplace-commerce.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -175,5 +182,83 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
+  },
+  {
+    name: "probe_x402_endpoint",
+    description: `Unpaid probe of a public URL. Returns HTTP status, PAYMENT-REQUIRED header decode, and whether the seller looks live. Costs ${CONFIG.prices.probeX402} USDC per call.`,
+    price: CONFIG.prices.probeX402,
+    zodShape: {
+      url: z.string(),
+      method: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { url: { type: "string" }, method: { type: "string", enum: ["GET", "HEAD", "POST"] } },
+      required: ["url"],
+    },
+    example: { url: "https://api.exa.ai/search", method: "POST" },
+    handler: async (args) => probeX402Endpoint({ url: args.url, method: args.method }),
+  },
+  {
+    name: "rank_agentic_sellers",
+    description: `Search Agentic.Market and rank live x402 sellers by price and 30-day volume. Costs ${CONFIG.prices.rankSellers} USDC per call.`,
+    price: CONFIG.prices.rankSellers,
+    zodShape: {
+      query: z.string(),
+      limit: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { query: { type: "string" }, limit: { type: "integer" } },
+      required: ["query"],
+    },
+    example: { query: "web search", limit: 8 },
+    handler: async (args) => rankAgenticSellers({ query: args.query, limit: args.limit }),
+  },
+  {
+    name: "inspect_payto",
+    description: `Check a merchant payTo address: USDC + native balances on one chain before first payment. Costs ${CONFIG.prices.inspectPayTo} USDC per call.`,
+    price: CONFIG.prices.inspectPayTo,
+    zodShape: {
+      address: z.string(),
+      network: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { address: { type: "string" }, network: { type: "string" } },
+      required: ["address"],
+    },
+    example: { address: "0x0000000000000000000000000000000000000001", network: "base" },
+    handler: async (args) => inspectPayTo({ address: args.address, network: args.network }),
+  },
+  {
+    name: "usdc_inventory",
+    description: `Multi-chain USDC + native snapshot for a buyer or seller wallet. Costs ${CONFIG.prices.usdcInventory} USDC per call.`,
+    price: CONFIG.prices.usdcInventory,
+    zodShape: {
+      address: z.string(),
+      networks: z.array(z.string()).max(5).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { address: { type: "string" }, networks: { type: "array", items: { type: "string" }, maxItems: 5 } },
+      required: ["address"],
+    },
+    example: { address: "0x0000000000000000000000000000000000000001", networks: ["base", "ethereum"] },
+    handler: async (args) => getUsdcInventory({ address: args.address, networks: args.networks }),
+  },
+  {
+    name: "advise_congestion",
+    description: `Tell an agent whether to submit now or wait based on live gas. Costs ${CONFIG.prices.congestionAdvice} USDC per call.`,
+    price: CONFIG.prices.congestionAdvice,
+    zodShape: {
+      network: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { network: { type: "string" } },
+    },
+    example: { network: "base" },
+    handler: async (args) => adviseCongestion({ network: args.network }),
   },
 ];

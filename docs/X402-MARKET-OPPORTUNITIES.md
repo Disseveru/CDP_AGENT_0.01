@@ -21,7 +21,20 @@ Inference routers, scrapers, generic price feeds, image gen, workflow executors,
 3. Settlement verification — confirm a hash landed and `to` matches `payTo`.
 4. Inbound webhook inboxes — already shipped as AgentWire `drain_inbox`.
 5. HITL CAPTCHA — already shipped; still scarce as a paid MCP SKU.
+6. Seller liveness probes — most indexed endpoints never settle; agents pay to avoid dead 402s.
+7. Marketplace ranking — cheapest + hottest seller for an intent on Agentic.Market.
+8. Merchant payTo inspection and multi-chain USDC inventory before first spend.
 
 ## AgentWire SKUs added in 1.5.0
 
 `quote_gas`, `quote_gas_bundle`, `estimate_tx_cost`, `get_balance`, `get_tx_status`, `plan_agent_spend`, `verify_settlement`, `cheapest_chain`.
+
+## AgentWire SKUs added in 1.6.0 (2026-09-02)
+
+- `probe_x402_endpoint` — unpaid liveness/402 inspector.
+- `rank_agentic_sellers` — Agentic.Market search ranked by min price and 30-day call volume.
+- `inspect_payto` — merchant USDC + native balances before first payment.
+- `usdc_inventory` — multi-chain USDC snapshot for budget planning.
+- `advise_congestion` — submit-now vs wait based on live EIP-1559 fees.
+
+These are wired through `EXTRA_PAID_TOOLS` into the MCP resource server so Bazaar discovery picks them up on the next facilitator crawl.
