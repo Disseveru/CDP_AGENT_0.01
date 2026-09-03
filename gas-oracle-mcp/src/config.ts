@@ -112,6 +112,12 @@ export const CONFIG = {
     planAgentSpend: process.env.PRICE_PLAN_AGENT_SPEND || "$0.001",
     verifySettlement: process.env.PRICE_VERIFY_SETTLEMENT || "$0.003",
     cheapestChain: process.env.PRICE_CHEAPEST_CHAIN || "$0.006",
+    decodeX402: process.env.PRICE_DECODE_X402 || "$0.001",
+    probeX402: process.env.PRICE_PROBE_X402 || "$0.004",
+    checkUsdcReady: process.env.PRICE_CHECK_USDC_READY || "$0.003",
+    inspectPayability: process.env.PRICE_INSPECT_PAYABILITY || "$0.012",
+    walletReadyBundle: process.env.PRICE_WALLET_READY_BUNDLE || "$0.010",
+    scoreLookalike: process.env.PRICE_SCORE_LOOKALIKE || "$0.001",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
@@ -122,6 +128,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.5.0",
+  serviceVersion: "1.6.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
