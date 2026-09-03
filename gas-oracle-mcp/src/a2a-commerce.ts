@@ -55,7 +55,19 @@ export async function probeX402Resource(input: { url: string }): Promise<Record<
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
     try {
-      const response = await fetch(url, { method: "GET", signal: controller.signal });
+      let response: Response;
+      let currentUrl = url;
+      for (let redirects = 0; ; redirects++) {
+        response = await fetch(currentUrl, {
+          method: "GET",
+          redirect: "manual",
+          signal: controller.signal,
+        });
+        const location = response.headers.get("location");
+        if (!location || response.status < 300 || response.status >= 400) break;
+        if (redirects >= 5) throw new Error("Too many redirects");
+        currentUrl = await assertSafePublicUrl(new URL(location, currentUrl).toString());
+      }
       const reader = response.body?.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
@@ -81,7 +93,7 @@ export async function probeX402Resource(input: { url: string }): Promise<Record<
         paymentRequiredHeader: response.headers.get("PAYMENT-REQUIRED"),
       });
       return {
-        url: url.toString(),
+        url: currentUrl.toString(),
         status: response.status,
         contentType: response.headers.get("content-type"),
         bodyBytes: size,

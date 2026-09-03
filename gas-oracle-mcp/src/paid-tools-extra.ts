@@ -139,7 +139,7 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
       required: ["balanceUsd", "pricePerCallUsd"],
     },
     example: { balanceUsd: "1.00", pricePerCallUsd: "$0.005", reserveUsd: "0.10", maxCalls: 50 },
-    handler: async (args) => planAgentSpend(args),
+    handler: async (args) => planAgentSpend(args as { balanceUsd: unknown; pricePerCallUsd: unknown; reserveUsd?: unknown; maxCalls?: unknown }),
   },
   {
     name: "verify_settlement",
