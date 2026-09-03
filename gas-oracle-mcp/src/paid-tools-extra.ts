@@ -4,6 +4,8 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import { probeX402Endpoint, rankX402Endpoints } from "./x402-probe.js";
+import { normalizeX402Receipt } from "./x402-receipt.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -175,5 +177,114 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
+  },
+  {
+    name: "probe_x402",
+    description: `Probe a URL for live x402 payment terms before spending. Returns 402 status, parsed accepts, cheapest USD price, payTo, and buy/skip advice. Costs ${CONFIG.prices.probeX402} USDC per call.`,
+    price: CONFIG.prices.probeX402,
+    zodShape: {
+      url: z.string().url(),
+      method: z.enum(["GET", "POST", "HEAD"]).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", format: "uri" },
+        method: { type: "string", enum: ["GET", "POST", "HEAD"] },
+      },
+      required: ["url"],
+    },
+    example: { url: "https://agentic.market/", method: "GET" },
+    handler: async (args) => probeX402Endpoint({ url: args.url, method: args.method }),
+  },
+  {
+    name: "rank_x402_endpoints",
+    description: `Probe up to 5 x402 URLs and rank live sellers by cheapest advertised USDC price. Costs ${CONFIG.prices.rankX402} USDC per call.`,
+    price: CONFIG.prices.rankX402,
+    zodShape: {
+      urls: z.array(z.string().url()).min(1).max(5),
+      method: z.enum(["GET", "POST", "HEAD"]).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        urls: { type: "array", items: { type: "string", format: "uri" }, minItems: 1, maxItems: 5 },
+        method: { type: "string", enum: ["GET", "POST", "HEAD"] },
+      },
+      required: ["urls"],
+    },
+    example: { urls: ["https://agentic.market/", "https://x402.org/"] },
+    handler: async (args) => rankX402Endpoints({ urls: args.urls, method: args.method }),
+  },
+  {
+    name: "normalize_x402_receipt",
+    description: `Turn PAYMENT-REQUIRED / PAYMENT-SIGNATURE / PAYMENT-RESPONSE headers into a structured receipt another agent can verify. Costs ${CONFIG.prices.normalizeReceipt} USDC per call.`,
+    price: CONFIG.prices.normalizeReceipt,
+    zodShape: {
+      paymentRequiredHeader: z.unknown().optional(),
+      paymentSignatureHeader: z.unknown().optional(),
+      paymentResponseHeader: z.unknown().optional(),
+      txHash: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        paymentRequiredHeader: {},
+        paymentSignatureHeader: {},
+        paymentResponseHeader: {},
+        txHash: { type: "string" },
+      },
+    },
+    example: {
+      paymentRequiredHeader: { x402Version: 2, accepts: [{ scheme: "exact", maxAmountRequired: "5000" }] },
+      txHash: "0xabc",
+    },
+    handler: async (args) => normalizeX402Receipt(args),
+  },
+  {
+    name: "commerce_preflight",
+    description: `Bundle: probe an x402 URL and plan how many calls a USDC balance can buy at the advertised price. Costs ${CONFIG.prices.commercePreflight} USDC per call.`,
+    price: CONFIG.prices.commercePreflight,
+    zodShape: {
+      url: z.string().url(),
+      balanceUsd: z.union([z.number(), z.string()]),
+      reserveUsd: z.union([z.number(), z.string()]).optional(),
+      maxCalls: z.number().int().optional(),
+      method: z.enum(["GET", "POST", "HEAD"]).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", format: "uri" },
+        balanceUsd: { type: ["number", "string"] },
+        reserveUsd: { type: ["number", "string"] },
+        maxCalls: { type: "integer" },
+        method: { type: "string", enum: ["GET", "POST", "HEAD"] },
+      },
+      required: ["url", "balanceUsd"],
+    },
+    example: { url: "https://agentic.market/", balanceUsd: "1.00", reserveUsd: "0.10" },
+    handler: async (args) => {
+      const probe = await probeX402Endpoint({ url: args.url, method: args.method });
+      const pricePerCallUsd = probe.cheapestUsd ?? 0;
+      const plan =
+        pricePerCallUsd > 0
+          ? planAgentSpend({
+              balanceUsd: args.balanceUsd,
+              pricePerCallUsd,
+              reserveUsd: args.reserveUsd,
+              maxCalls: args.maxCalls,
+            })
+          : null;
+      return {
+        probe,
+        plan,
+        recommendation:
+          plan?.recommendation ??
+          (probe.paymentRequired
+            ? "Terms found but price could not be parsed — inspect probe.accepts before buying."
+            : probe.recommendation),
+      };
+    },
   },
 ];
