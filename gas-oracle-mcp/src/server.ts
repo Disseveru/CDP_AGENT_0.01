@@ -55,6 +55,7 @@ import {
 } from "./payments.js";
 import { initializeOracleIdentity } from "./wallet.js";
 import type { OracleIdentity } from "./wallet.js";
+import { EXTRA_PAID_TOOLS } from "./paid-tools-extra.js";
 
 interface PaidToolDefinition {
   name: string;
@@ -301,6 +302,7 @@ const TOOL_DEFINITIONS: PaidToolDefinition[] = [
       });
     },
   },
+  ...EXTRA_PAID_TOOLS,
 ];
 
 interface PreparedTool {

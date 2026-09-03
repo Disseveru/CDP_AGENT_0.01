@@ -4,6 +4,14 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import {
+  parseX402Challenge,
+  probeX402Resource,
+  checkUsdcReadiness,
+  inspectPayability,
+  walletReadyBundle,
+  scoreAddressLookalike,
+} from "./a2a-commerce.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -175,5 +183,53 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
+  },
+  {
+    name: "decode_x402_challenge",
+    description: `Decode an x402 payment challenge. Costs ${CONFIG.prices.decodeX402} USDC per call.`,
+    price: CONFIG.prices.decodeX402,
+    zodShape: { body: z.unknown().optional(), paymentRequiredHeader: z.string().optional() },
+    jsonSchema: { type: "object", properties: { body: {}, paymentRequiredHeader: { type: "string" } } },
+    handler: async (args) => parseX402Challenge(args),
+  },
+  {
+    name: "probe_x402",
+    description: `Probe a public resource for x402 payment requirements. Costs ${CONFIG.prices.probeX402} USDC per call.`,
+    price: CONFIG.prices.probeX402,
+    zodShape: { url: z.string().url() },
+    jsonSchema: { type: "object", properties: { url: { type: "string", format: "uri" } }, required: ["url"] },
+    handler: async (args) => probeX402Resource({ url: String(args.url) }),
+  },
+  {
+    name: "check_usdc_ready",
+    description: `Check an address's native USDC balance. Costs ${CONFIG.prices.checkUsdcReady} USDC per call.`,
+    price: CONFIG.prices.checkUsdcReady,
+    zodShape: { address: z.string(), network: z.string().optional() },
+    jsonSchema: { type: "object", properties: { address: { type: "string" }, network: { type: "string" } }, required: ["address"] },
+    handler: async (args) => checkUsdcReadiness({ address: String(args.address), network: args.network as string | undefined }),
+  },
+  {
+    name: "inspect_payability",
+    description: `Probe a resource and optionally check buyer USDC readiness. Costs ${CONFIG.prices.inspectPayability} USDC per call.`,
+    price: CONFIG.prices.inspectPayability,
+    zodShape: { url: z.string().url(), buyerAddress: z.string().optional() },
+    jsonSchema: { type: "object", properties: { url: { type: "string", format: "uri" }, buyerAddress: { type: "string" } }, required: ["url"] },
+    handler: async (args) => inspectPayability({ url: String(args.url), buyerAddress: args.buyerAddress as string | undefined }),
+  },
+  {
+    name: "wallet_ready_bundle",
+    description: `Return wallet balance, gas, cost, and optional transaction status. Costs ${CONFIG.prices.walletReadyBundle} USDC per call.`,
+    price: CONFIG.prices.walletReadyBundle,
+    zodShape: { address: z.string(), network: z.string().optional(), recentTxHash: z.string().optional() },
+    jsonSchema: { type: "object", properties: { address: { type: "string" }, network: { type: "string" }, recentTxHash: { type: "string" } }, required: ["address"] },
+    handler: async (args) => walletReadyBundle({ address: String(args.address), network: args.network as string | undefined, recentTxHash: args.recentTxHash as string | undefined }),
+  },
+  {
+    name: "score_payto_lookalike",
+    description: `Score an expected and actual payTo address for lookalike poisoning. Costs ${CONFIG.prices.scoreLookalike} USDC per call.`,
+    price: CONFIG.prices.scoreLookalike,
+    zodShape: { expected: z.string(), actual: z.string() },
+    jsonSchema: { type: "object", properties: { expected: { type: "string" }, actual: { type: "string" } }, required: ["expected", "actual"] },
+    handler: async (args) => scoreAddressLookalike({ expected: String(args.expected), actual: String(args.actual) }),
   },
 ];
