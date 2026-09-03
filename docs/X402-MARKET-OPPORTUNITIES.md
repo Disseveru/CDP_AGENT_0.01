@@ -1,4 +1,4 @@
-# x402 / Agentic Market — opportunity notes (2026-08-30)
+# x402 / Agentic Market — opportunity notes (2026-09-03)
 
 Snapshot for sellers listing on Agentic.Market and similar x402 directories.
 
@@ -21,7 +21,17 @@ Inference routers, scrapers, generic price feeds, image gen, workflow executors,
 3. Settlement verification — confirm a hash landed and `to` matches `payTo`.
 4. Inbound webhook inboxes — already shipped as AgentWire `drain_inbox`.
 5. HITL CAPTCHA — already shipped; still scarce as a paid MCP SKU.
+6. Pre-spend seller inspection — live 402 probe, price rank, receipt normalize. Shipped in 1.6.0.
 
 ## AgentWire SKUs added in 1.5.0
 
 `quote_gas`, `quote_gas_bundle`, `estimate_tx_cost`, `get_balance`, `get_tx_status`, `plan_agent_spend`, `verify_settlement`, `cheapest_chain`.
+
+## AgentWire SKUs added in 1.6.0 (pre-spend commerce)
+
+1. `probe_x402` — live 402 probe + parsed accepts + buy/skip ($0.004)
+2. `rank_x402_endpoints` — compare up to 5 seller URLs by advertised USDC price ($0.012)
+3. `normalize_x402_receipt` — structured receipt from payment headers ($0.002)
+4. `commerce_preflight` — probe + spend plan bundle ($0.008)
+
+These are defined in `gas-oracle-mcp/src/paid-tools-extra.ts` and registered from `gas-oracle-mcp/src/server.ts`.
