@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseUsdAmount, planAgentSpend } from "./agent-commerce.js";
+import { parseUsdAmount } from "./money.js";
+import { planAgentSpend } from "./agent-commerce.js";
 
 test("parseUsdAmount accepts $ and plain decimals", () => {
   assert.equal(parseUsdAmount("$0.005", "price"), 0.005);

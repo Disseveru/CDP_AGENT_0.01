@@ -1,4 +1,4 @@
-# x402 / Agentic Market — opportunity notes (2026-08-30)
+# x402 / Agentic Market — opportunity notes (2026-09-04)
 
 Snapshot for sellers listing on Agentic.Market and similar x402 directories.
 
@@ -21,7 +21,12 @@ Inference routers, scrapers, generic price feeds, image gen, workflow executors,
 3. Settlement verification — confirm a hash landed and `to` matches `payTo`.
 4. Inbound webhook inboxes — already shipped as AgentWire `drain_inbox`.
 5. HITL CAPTCHA — already shipped; still scarce as a paid MCP SKU.
+6. Seller preflight — decode a target's 402 challenge and rank competing endpoints before spending.
 
 ## AgentWire SKUs added in 1.5.0
 
 `quote_gas`, `quote_gas_bundle`, `estimate_tx_cost`, `get_balance`, `get_tx_status`, `plan_agent_spend`, `verify_settlement`, `cheapest_chain`.
+
+## AgentWire SKUs added in 1.6.0
+
+`probe_x402_endpoint`, `quote_x402_bundle`, `decode_payment_required` — buyer-side preflight. These sit in front of every new paid call an agent makes on Agentic.Market: quote first, then spend. Also wires the 1.5.0 commerce tools into the live MCP server (`TOOL_DEFINITIONS`), which previously defined them without registering them.
