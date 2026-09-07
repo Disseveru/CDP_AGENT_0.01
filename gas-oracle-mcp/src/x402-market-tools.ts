@@ -1,10 +1,9 @@
 import { z } from "zod";
 
 import { CONFIG } from "./config.js";
-import type { ExtraPaidToolDefinition } from "./paid-tools-extra.js";
 import { compareSellerQuotes, decode402Payload, probeX402Endpoint } from "./x402-commerce.js";
 
-export const X402_MARKET_TOOLS: ExtraPaidToolDefinition[] = [
+export const X402_MARKET_TOOLS = [
   {
     name: "decode_402",
     description: `Parse an HTTP 402 / x402 accepts payload into scheme, network, payTo, and USD price. Costs ${CONFIG.prices.decode402} USDC per call.`,
@@ -32,7 +31,8 @@ export const X402_MARKET_TOOLS: ExtraPaidToolDefinition[] = [
         ],
       },
     },
-    handler: async (args) => decode402Payload(args.payload, args.httpStatus as number | undefined),
+    handler: async (args: Record<string, unknown>) =>
+      decode402Payload(args.payload, args.httpStatus as number | undefined),
   },
   {
     name: "compare_seller_quotes",
@@ -78,7 +78,7 @@ export const X402_MARKET_TOOLS: ExtraPaidToolDefinition[] = [
         { name: "blockrun-chat", priceUsd: "$0.001", network: "base" },
       ],
     },
-    handler: async (args) => compareSellerQuotes(args.quotes as never),
+    handler: async (args: Record<string, unknown>) => compareSellerQuotes(args.quotes as never),
   },
   {
     name: "probe_x402_endpoint",
@@ -97,6 +97,7 @@ export const X402_MARKET_TOOLS: ExtraPaidToolDefinition[] = [
       required: ["url"],
     },
     example: { url: "https://api.exa.ai/search", method: "GET" },
-    handler: async (args) => probeX402Endpoint({ url: args.url, method: args.method }),
+    handler: async (args: Record<string, unknown>) =>
+      probeX402Endpoint({ url: args.url, method: args.method }),
   },
 ];
