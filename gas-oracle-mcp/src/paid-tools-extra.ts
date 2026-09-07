@@ -4,6 +4,7 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -176,4 +177,5 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
   },
+  ...X402_MARKET_TOOLS,
 ];
