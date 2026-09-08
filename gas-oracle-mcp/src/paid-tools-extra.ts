@@ -5,6 +5,7 @@ import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
+import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -176,6 +177,34 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     example: { gasLimit: 250000, chains: ["base", "arbitrum", "optimism"] },
     handler: async (args) => cheapestChainForTx({ gasLimit: args.gasLimit, chains: args.chains }),
+  },
+  {
+    name: "search_agentic_market",
+    description: `Search Agentic.Market x402 listings by keyword. Returns name, category, networks, and min USDC price. Costs ${CONFIG.prices.searchAgenticMarket} USDC per call.`,
+    price: CONFIG.prices.searchAgenticMarket,
+    zodShape: {
+      q: z.string().min(1).max(80),
+      limit: z.number().int().min(1).max(25).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        q: { type: "string", minLength: 1, maxLength: 80 },
+        limit: { type: "integer", minimum: 1, maximum: 25 },
+      },
+      required: ["q"],
+    },
+    example: { q: "search", limit: 8 },
+    handler: async (args) => searchAgenticMarket({ q: String(args.q), limit: args.limit as number | undefined }),
+  },
+  {
+    name: "facilitator_health",
+    description: `Probe known x402 facilitators for HTTP liveness and latency. Costs ${CONFIG.prices.facilitatorHealth} USDC per call.`,
+    price: CONFIG.prices.facilitatorHealth,
+    zodShape: {},
+    jsonSchema: { type: "object", properties: {} },
+    example: {},
+    handler: async () => checkFacilitatorHealth(),
   },
   ...X402_MARKET_TOOLS,
 ];
