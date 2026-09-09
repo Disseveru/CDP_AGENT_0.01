@@ -6,6 +6,7 @@ import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
+import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -205,6 +206,75 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     jsonSchema: { type: "object", properties: {} },
     example: {},
     handler: async () => checkFacilitatorHealth(),
+  },
+  {
+    name: "score_x402_seller",
+    description: `Risk-score an x402 402 challenge (payTo, scheme, network, price). Costs ${CONFIG.prices.scoreX402Seller} USDC per call.`,
+    price: CONFIG.prices.scoreX402Seller,
+    zodShape: {
+      payload: z.unknown(),
+      httpStatus: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: { payload: {}, httpStatus: { type: "integer" } },
+      required: ["payload"],
+    },
+    example: {
+      httpStatus: 402,
+      payload: {
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:8453",
+            asset: "USDC",
+            payTo: "0x0000000000000000000000000000000000000001",
+            maxAmountRequired: "2000",
+          },
+        ],
+      },
+    },
+    handler: async (args) => scoreX402Seller(args.payload, args.httpStatus as number | undefined),
+  },
+  {
+    name: "preflight_pay_session",
+    description: `Bundle: score seller + plan spend from USDC balance against the cheapest listed price. Costs ${CONFIG.prices.preflightPaySession} USDC per call.`,
+    price: CONFIG.prices.preflightPaySession,
+    zodShape: {
+      balanceUsd: z.union([z.number(), z.string()]),
+      payload: z.unknown(),
+      httpStatus: z.number().int().optional(),
+      reserveUsd: z.union([z.number(), z.string()]).optional(),
+      maxCalls: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        balanceUsd: { type: ["number", "string"] },
+        payload: {},
+        httpStatus: { type: "integer" },
+        reserveUsd: { type: ["number", "string"] },
+        maxCalls: { type: "integer" },
+      },
+      required: ["balanceUsd", "payload"],
+    },
+    example: {
+      balanceUsd: "1.00",
+      reserveUsd: "0.10",
+      httpStatus: 402,
+      payload: {
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:8453",
+            asset: "USDC",
+            payTo: "0x0000000000000000000000000000000000000001",
+            maxAmountRequired: "2000",
+          },
+        ],
+      },
+    },
+    handler: async (args) => preflightPaySession(args),
   },
   ...X402_MARKET_TOOLS,
 ];
