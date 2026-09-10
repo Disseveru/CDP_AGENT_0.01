@@ -7,6 +7,12 @@ import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
+import {
+  a2aCommerceBundle,
+  issueDeliveryReceipt,
+  pickFacilitatorFailover,
+  screenTokenAllowlist,
+} from "./a2a-commerce-skus.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -275,6 +281,116 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
       },
     },
     handler: async (args) => preflightPaySession(args),
+  },
+  {
+    name: "screen_token_allowlist",
+    description: `Allowlist-screen an x402 asset + payTo before an agent spends. Costs ${CONFIG.prices.screenTokenAllowlist} USDC per call.`,
+    price: CONFIG.prices.screenTokenAllowlist,
+    zodShape: {
+      asset: z.string(),
+      network: z.string(),
+      payTo: z.string().optional(),
+      extraAllowlist: z.array(z.string()).max(20).optional(),
+      extraDenylist: z.array(z.string()).max(20).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        asset: { type: "string" },
+        network: { type: "string" },
+        payTo: { type: "string" },
+        extraAllowlist: { type: "array", items: { type: "string" }, maxItems: 20 },
+        extraDenylist: { type: "array", items: { type: "string" }, maxItems: 20 },
+      },
+      required: ["asset", "network"],
+    },
+    example: {
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      network: "eip155:8453",
+      payTo: "0x0000000000000000000000000000000000000001",
+    },
+    handler: async (args) => screenTokenAllowlist(args as never),
+  },
+  {
+    name: "pick_facilitator_failover",
+    description: `Rank live x402 facilitators by latency and return the fail-over pick. Costs ${CONFIG.prices.pickFacilitatorFailover} USDC per call.`,
+    price: CONFIG.prices.pickFacilitatorFailover,
+    zodShape: {
+      urls: z.array(z.object({ id: z.string().optional(), url: z.string().url() })).max(8).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        urls: {
+          type: "array",
+          maxItems: 8,
+          items: {
+            type: "object",
+            properties: { id: { type: "string" }, url: { type: "string", format: "uri" } },
+            required: ["url"],
+          },
+        },
+      },
+    },
+    example: {},
+    handler: async (args) => pickFacilitatorFailover({ urls: args.urls as never }),
+  },
+  {
+    name: "issue_delivery_receipt",
+    description: `HMAC-SHA256 delivery receipt for a paid SKU payload. Costs ${CONFIG.prices.issueDeliveryReceipt} USDC per call.`,
+    price: CONFIG.prices.issueDeliveryReceipt,
+    zodShape: {
+      sku: z.string().min(1),
+      payload: z.unknown(),
+      buyer: z.string().optional(),
+      seller: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        sku: { type: "string" },
+        payload: {},
+        buyer: { type: "string" },
+        seller: { type: "string" },
+      },
+      required: ["sku"],
+    },
+    example: { sku: "quote_gas", payload: { chain: "base" }, buyer: "0xabc", seller: "agentwire" },
+    handler: async (args) => issueDeliveryReceipt(args as never),
+  },
+  {
+    name: "a2a_commerce_bundle",
+    description: `Bundled allowlist screen + facilitator failover + signed receipt. Costs ${CONFIG.prices.a2aCommerceBundle} USDC per call.`,
+    price: CONFIG.prices.a2aCommerceBundle,
+    zodShape: {
+      asset: z.string(),
+      network: z.string(),
+      payTo: z.string().optional(),
+      sku: z.string().min(1),
+      payload: z.unknown(),
+      buyer: z.string().optional(),
+      seller: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        asset: { type: "string" },
+        network: { type: "string" },
+        payTo: { type: "string" },
+        sku: { type: "string" },
+        payload: {},
+        buyer: { type: "string" },
+        seller: { type: "string" },
+      },
+      required: ["asset", "network", "sku"],
+    },
+    example: {
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      network: "base",
+      sku: "quote_gas",
+      payload: { chain: "base" },
+    },
+    handler: async (args) => a2aCommerceBundle(args as never),
   },
   ...X402_MARKET_TOOLS,
 ];
