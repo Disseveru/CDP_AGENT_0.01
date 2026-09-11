@@ -4,6 +4,11 @@ import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import {
+  allocateAgentBudget,
+  issueDeliveryReceipt,
+  screenPayAsset,
+} from "./agent-commerce-bundle.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
@@ -275,6 +280,113 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
       },
     },
     handler: async (args) => preflightPaySession(args),
+  },
+  {
+    name: "screen_pay_asset",
+    description: `Allow/review/deny an x402 asset+payTo before the buyer signs. Costs ${CONFIG.prices.screenPayAsset} USDC per call.`,
+    price: CONFIG.prices.screenPayAsset,
+    zodShape: {
+      asset: z.string().optional(),
+      network: z.string().optional(),
+      payTo: z.string().optional(),
+      amountUsd: z.union([z.number(), z.string()]).optional(),
+      maxAmountUsd: z.union([z.number(), z.string()]).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        asset: { type: "string" },
+        network: { type: "string" },
+        payTo: { type: "string" },
+        amountUsd: { type: ["number", "string"] },
+        maxAmountUsd: { type: ["number", "string"] },
+      },
+    },
+    example: {
+      asset: "USDC",
+      network: "eip155:8453",
+      payTo: "0x0000000000000000000000000000000000000001",
+      amountUsd: "0.01",
+    },
+    handler: async (args) => screenPayAsset(args),
+  },
+  {
+    name: "allocate_agent_budget",
+    description: `Split one USDC treasury across a buyer fleet with reserve + per-agent caps. Costs ${CONFIG.prices.allocateAgentBudget} USDC per call.`,
+    price: CONFIG.prices.allocateAgentBudget,
+    zodShape: {
+      totalUsd: z.union([z.number(), z.string()]),
+      reserveUsd: z.union([z.number(), z.string()]).optional(),
+      lines: z
+        .array(
+          z.object({
+            agentId: z.string().optional(),
+            shareBps: z.number().int().optional(),
+            maxUsd: z.union([z.number(), z.string()]).optional(),
+          }),
+        )
+        .min(1)
+        .max(25),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        totalUsd: { type: ["number", "string"] },
+        reserveUsd: { type: ["number", "string"] },
+        lines: {
+          type: "array",
+          minItems: 1,
+          maxItems: 25,
+          items: {
+            type: "object",
+            properties: {
+              agentId: { type: "string" },
+              shareBps: { type: "integer" },
+              maxUsd: { type: ["number", "string"] },
+            },
+          },
+        },
+      },
+      required: ["totalUsd", "lines"],
+    },
+    example: {
+      totalUsd: "10",
+      reserveUsd: "1",
+      lines: [{ agentId: "scout" }, { agentId: "buyer", maxUsd: "2" }],
+    },
+    handler: async (args) => allocateAgentBudget(args as never),
+  },
+  {
+    name: "issue_delivery_receipt",
+    description: `Deterministic SHA-256 receipt over a paid payload so buyer and seller can audit delivery. Costs ${CONFIG.prices.issueDeliveryReceipt} USDC per call.`,
+    price: CONFIG.prices.issueDeliveryReceipt,
+    zodShape: {
+      seller: z.string().optional(),
+      buyer: z.string().optional(),
+      resource: z.string().optional(),
+      payload: z.unknown().optional(),
+      amountUsd: z.union([z.number(), z.string()]).optional(),
+      txHash: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        seller: { type: "string" },
+        buyer: { type: "string" },
+        resource: { type: "string" },
+        payload: {},
+        amountUsd: { type: ["number", "string"] },
+        txHash: { type: "string" },
+      },
+    },
+    example: {
+      seller: "agentwire",
+      buyer: "0xabc",
+      resource: "/quote_gas",
+      payload: { chain: "base" },
+      amountUsd: "0.002",
+    },
+    handler: async (args) => issueDeliveryReceipt(args),
   },
   ...X402_MARKET_TOOLS,
 ];
