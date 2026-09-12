@@ -285,5 +285,5 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     },
     handler: async (args) => preflightPaySession(args as PreflightPaySessionInput),
   },
-  ...X402_MARKET_TOOLS,
+  ...(X402_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
 ];
