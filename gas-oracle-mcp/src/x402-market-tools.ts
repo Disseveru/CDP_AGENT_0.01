@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CONFIG } from "./config.js";
 import { compareSellerQuotes, decode402Payload, probeX402Endpoint } from "./x402-commerce.js";
 
+/** Same shape as ExtraPaidToolDefinition — kept local to avoid circular import. */
 export const X402_MARKET_TOOLS = [
   {
     name: "decode_402",
@@ -100,4 +101,4 @@ export const X402_MARKET_TOOLS = [
     handler: async (args: Record<string, unknown>) =>
       probeX402Endpoint({ url: args.url, method: args.method }),
   },
-];
+] as const;
