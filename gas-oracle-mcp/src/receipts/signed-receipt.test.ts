@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { issueReceipt, verifyReceipt, sha256Hex, facilitatorFailoverScore } from "./signed-receipt.ts";
+import { issueReceipt, verifyReceipt, sha256Hex, facilitatorFailoverScore } from "./signed-receipt.js";
 
 const secret = "production-grade-secret-key";
 const signed = issueReceipt(secret, {
