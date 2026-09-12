@@ -143,7 +143,13 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
       required: ["balanceUsd", "pricePerCallUsd"],
     },
     example: { balanceUsd: "1.00", pricePerCallUsd: "$0.005", reserveUsd: "0.10", maxCalls: 50 },
-    handler: async (args) => planAgentSpend(args as PlanAgentSpendInput),
+    handler: async (args) =>
+      planAgentSpend({
+        balanceUsd: args.balanceUsd,
+        pricePerCallUsd: args.pricePerCallUsd,
+        reserveUsd: args.reserveUsd,
+        maxCalls: args.maxCalls,
+      } satisfies PlanAgentSpendInput),
   },
   {
     name: "verify_settlement",
@@ -283,7 +289,14 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
         ],
       },
     },
-    handler: async (args) => preflightPaySession(args as PreflightPaySessionInput),
+    handler: async (args) =>
+      preflightPaySession({
+        balanceUsd: args.balanceUsd,
+        payload: args.payload,
+        httpStatus: args.httpStatus as number | undefined,
+        reserveUsd: args.reserveUsd,
+        maxCalls: args.maxCalls,
+      } satisfies PreflightPaySessionInput),
   },
   ...(X402_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
 ];
