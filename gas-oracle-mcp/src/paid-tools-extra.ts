@@ -5,6 +5,7 @@ import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js
 import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
+import { A2A_MARKET_TOOLS } from "./a2a-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
 
@@ -277,4 +278,5 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
     handler: async (args) => preflightPaySession(args),
   },
   ...X402_MARKET_TOOLS,
+  ...A2A_MARKET_TOOLS,
 ];
