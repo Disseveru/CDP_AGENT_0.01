@@ -6,6 +6,7 @@ import { getBalance, getTxStatus } from "./gas.js";
 import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { A2A_MARKET_TOOLS } from "./a2a-market-tools.js";
+import { A2A_RAIL_TOOLS } from "./a2a-rail-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
 
@@ -279,4 +280,5 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
   },
   ...X402_MARKET_TOOLS,
   ...A2A_MARKET_TOOLS,
+  ...A2A_RAIL_TOOLS,
 ];
