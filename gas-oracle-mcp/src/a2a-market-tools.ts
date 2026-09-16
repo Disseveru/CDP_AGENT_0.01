@@ -9,6 +9,11 @@ import {
   verifyDeliveryReceipt,
   type DeliveryReceipt,
 } from "./a2a-sku.js";
+import {
+  normalizeX402Amount,
+  screenSettlementAsset,
+  settlementReadiness,
+} from "./settlement-asset.js";
 
 export const A2A_MARKET_TOOLS = [
   {
@@ -219,5 +224,106 @@ export const A2A_MARKET_TOOLS = [
       ],
     },
     handler: async (args: Record<string, unknown>) => pickFacilitatorFailover(args.candidates as never),
+  },
+  {
+    name: "screen_settlement_asset",
+    description: `Allowlist native Circle USDC contracts so agents refuse unknown/fee-on-transfer ERC-20s in a 402 challenge. Costs ${CONFIG.prices.screenSettlementAsset} USDC per call.`,
+    price: CONFIG.prices.screenSettlementAsset,
+    zodShape: {
+      asset: z.string(),
+      network: z.string().optional(),
+      caip2: z.string().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        asset: { type: "string" },
+        network: { type: "string" },
+        caip2: { type: "string" },
+      },
+      required: ["asset"],
+    },
+    example: { asset: "USDC", network: "base" },
+    handler: async (args: Record<string, unknown>) =>
+      screenSettlementAsset({
+        asset: String(args.asset),
+        network: args.network as string | undefined,
+        caip2: args.caip2 as string | undefined,
+      }),
+  },
+  {
+    name: "normalize_x402_amount",
+    description: `Convert human USD to 402 maxAmountRequired atomic units (default 6 decimals) or decode atomic back to USD. Costs ${CONFIG.prices.normalizeX402Amount} USDC per call.`,
+    price: CONFIG.prices.normalizeX402Amount,
+    zodShape: {
+      amountUsd: z.union([z.number(), z.string()]).optional(),
+      atomic: z.string().optional(),
+      decimals: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        amountUsd: { type: ["number", "string"] },
+        atomic: { type: "string" },
+        decimals: { type: "integer" },
+      },
+    },
+    example: { amountUsd: "0.002" },
+    handler: async (args: Record<string, unknown>) =>
+      normalizeX402Amount({
+        amountUsd: args.amountUsd,
+        atomic: args.atomic as string | undefined,
+        decimals: args.decimals as number | undefined,
+      }),
+  },
+  {
+    name: "settlement_readiness",
+    description: `Bundle: USDC asset allowlist + atomic amount + payee screen before the agent signs. Costs ${CONFIG.prices.settlementReadiness} USDC per call.`,
+    price: CONFIG.prices.settlementReadiness,
+    zodShape: {
+      payTo: z.string(),
+      asset: z.string(),
+      amountUsd: z.union([z.number(), z.string()]).optional(),
+      atomic: z.string().optional(),
+      network: z.string().optional(),
+      caip2: z.string().optional(),
+      allowlist: z.array(z.string()).max(50).optional(),
+      denylist: z.array(z.string()).max(50).optional(),
+      maxPriceUsd: z.union([z.number(), z.string()]).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        payTo: { type: "string" },
+        asset: { type: "string" },
+        amountUsd: { type: ["number", "string"] },
+        atomic: { type: "string" },
+        network: { type: "string" },
+        caip2: { type: "string" },
+        allowlist: { type: "array", items: { type: "string" }, maxItems: 50 },
+        denylist: { type: "array", items: { type: "string" }, maxItems: 50 },
+        maxPriceUsd: { type: ["number", "string"] },
+      },
+      required: ["payTo", "asset"],
+    },
+    example: {
+      payTo: "0x0000000000000000000000000000000000000002",
+      asset: "USDC",
+      network: "base",
+      amountUsd: "0.01",
+      maxPriceUsd: "0.05",
+    },
+    handler: async (args: Record<string, unknown>) =>
+      settlementReadiness({
+        payTo: String(args.payTo),
+        asset: String(args.asset),
+        amountUsd: args.amountUsd,
+        atomic: args.atomic as string | undefined,
+        network: args.network as string | undefined,
+        caip2: args.caip2 as string | undefined,
+        allowlist: args.allowlist as string[] | undefined,
+        denylist: args.denylist as string[] | undefined,
+        maxPriceUsd: args.maxPriceUsd,
+      }),
   },
 ];
