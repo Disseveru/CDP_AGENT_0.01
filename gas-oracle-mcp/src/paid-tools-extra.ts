@@ -3,11 +3,20 @@ import { z } from "zod";
 import { CONFIG } from "./config.js";
 import { getGasOracle, getGasOracleBatch, estimateTxCost } from "./gas-oracle.js";
 import { getBalance, getTxStatus } from "./gas.js";
-import { planAgentSpend, verifySettlementTx, cheapestChainForTx } from "./agent-commerce.js";
+import {
+  planAgentSpend,
+  verifySettlementTx,
+  cheapestChainForTx,
+  type PlanAgentSpendInput,
+} from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { A2A_MARKET_TOOLS } from "./a2a-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
-import { preflightPaySession, scoreX402Seller } from "./commerce-preflight.js";
+import {
+  preflightPaySession,
+  scoreX402Seller,
+  type PreflightPaySessionInput,
+} from "./commerce-preflight.js";
 
 export interface ExtraPaidToolDefinition {
   name: string;
@@ -135,7 +144,7 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
       required: ["balanceUsd", "pricePerCallUsd"],
     },
     example: { balanceUsd: "1.00", pricePerCallUsd: "$0.005", reserveUsd: "0.10", maxCalls: 50 },
-    handler: async (args) => planAgentSpend(args),
+    handler: async (args) => planAgentSpend(args as unknown as PlanAgentSpendInput),
   },
   {
     name: "verify_settlement",
@@ -275,8 +284,10 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
         ],
       },
     },
-    handler: async (args) => preflightPaySession(args),
+    handler: async (args) => preflightPaySession(args as unknown as PreflightPaySessionInput),
   },
-  ...X402_MARKET_TOOLS,
-  ...A2A_MARKET_TOOLS,
+  // Market tool modules are validated at registration time; cast keeps the shared
+  // ExtraPaidToolDefinition contract without fighting Zod object-literal variance.
+  ...(X402_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
+  ...(A2A_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
 ];
