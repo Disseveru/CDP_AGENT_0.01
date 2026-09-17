@@ -45,19 +45,29 @@ function pickString(obj: Record<string, unknown>, keys: string[]): string | null
   return null;
 }
 
+/**
+ * Normalize x402 maxAmountRequired into human USD.
+ *
+ * Convention (x402 / EIP-3009 USDC):
+ * - pure integer strings → atomic units at 6 decimals ("2000" → 0.002)
+ * - decimal or $-prefixed → already human USD ("0.002", "$0.01")
+ */
 function parseAtomicUsd(raw: string | null): number | null {
   if (!raw) return null;
   const trimmed = raw.trim();
-  if (/^\$?\d+(\.\d{1,6})?$/.test(trimmed.replace(/^\$/, ""))) {
-    return Number(trimmed.replace(/^\$/, ""));
+  const withoutDollar = trimmed.replace(/^\$/, "");
+
+  // Explicit human USD: has a decimal point and/or leading $
+  if (trimmed.startsWith("$") || /^\d+\.\d{1,8}$/.test(withoutDollar)) {
+    const n = Number(withoutDollar);
+    return Number.isFinite(n) ? n : null;
   }
-  if (/^\d+$/.test(trimmed) && trimmed.length > 6) {
+
+  // Pure integer → atomic USDC (6 decimals)
+  if (/^\d+$/.test(trimmed)) {
     return Number(trimmed) / 1_000_000;
   }
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed);
-    return n >= 1_000 ? n / 1_000_000 : n;
-  }
+
   try {
     return parseUsdAmount(trimmed, "amount");
   } catch {
