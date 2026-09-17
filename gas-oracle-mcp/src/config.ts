@@ -120,6 +120,9 @@ export const CONFIG = {
     scoreX402Seller: process.env.PRICE_SCORE_X402_SELLER || "$0.004",
     preflightPaySession: process.env.PRICE_PREFLIGHT_PAY_SESSION || "$0.008",
     screenPayee: process.env.PRICE_SCREEN_PAYEE || "$0.004",
+    screenToken: process.env.PRICE_SCREEN_TOKEN || "$0.004",
+    quoteSlaEscrow: process.env.PRICE_QUOTE_SLA_ESCROW || "$0.006",
+    probeFacilitatorBundle: process.env.PRICE_PROBE_FACILITATOR_BUNDLE || "$0.008",
     bundleAgentQuote: process.env.PRICE_BUNDLE_AGENT_QUOTE || "$0.003",
     issueDeliveryReceipt: process.env.PRICE_ISSUE_DELIVERY_RECEIPT || "$0.005",
     verifyDeliveryReceipt: process.env.PRICE_VERIFY_DELIVERY_RECEIPT || "$0.002",
@@ -134,6 +137,6 @@ export const CONFIG = {
     notifications: parseNotificationSettings(process.env),
   },
   serviceName: "AgentWire",
-  serviceVersion: "1.9.0",
+  serviceVersion: "1.10.0",
   agentEmailDomain: resolveAgentEmailDomain(),
 } as const;
