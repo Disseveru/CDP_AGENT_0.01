@@ -1,7 +1,7 @@
 {
   "name": "agentwire-mcp",
-  "version": "1.9.0",
-  "description": "AgentWire: x402-paid MCP server. Webhook inbox, web fetch, multi-chain gas oracle, x402 402 decoder, seller risk score, pay-session preflight, seller quote compare, endpoint probe, spend planner, settlement verify, payee screen, bundle quote, signed delivery receipts, facilitator failover, and CAPTCHA HITL for autonomous agents.",
+  "version": "1.10.0",
+  "description": "AgentWire: x402-paid MCP server. Webhook inbox, web fetch, multi-chain gas oracle, x402 402 decoder, seller risk score, pay-session preflight, seller quote compare, endpoint probe, spend planner, settlement verify, payee screen, token screen, SLA escrow quote, facilitator probe, bundle quote, signed delivery receipts, facilitator failover, and CAPTCHA HITL for autonomous agents.",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
