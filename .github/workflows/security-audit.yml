@@ -1,6 +1,9 @@
 # npm dependency audit — root CLI + AgentWire MCP.
 # Fail only on critical findings. High/moderate from deep agentkit/web3 trees are
 # reported but do not block merge (breaking upgrades require a dedicated PR).
+#
+# Use `npm install` (not `npm ci`) so package.json overrides can resolve without
+# requiring a lockfile rewrite on every transitive pin.
 name: Security audit
 
 on:
@@ -25,7 +28,7 @@ jobs:
 
       - name: Audit root dependencies (critical)
         run: |
-          npm ci
+          npm install --no-fund --no-audit
           npm audit --audit-level=critical
 
       - name: Report root high/moderate (non-blocking)
@@ -35,7 +38,7 @@ jobs:
       - name: Audit AgentWire dependencies (critical)
         working-directory: gas-oracle-mcp
         run: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps --no-fund --no-audit
           npm audit --audit-level=critical
 
       - name: Report AgentWire high/moderate (non-blocking)
