@@ -5,7 +5,10 @@ import {
   bundleAgentQuote,
   issueDeliveryReceipt,
   pickFacilitatorFailover,
+  probeFacilitatorBundle,
+  quoteSlaEscrow,
   screenPayee,
+  screenToken,
   verifyDeliveryReceipt,
 } from "./a2a-sku.js";
 
@@ -34,6 +37,27 @@ test("screenPayee enforces allowlist and price cap", () => {
     maxPriceUsd: "0.05",
   });
   assert.equal(expensive.allowed, false);
+});
+
+test("screenToken allows Base USDC and rejects unknown tokens", () => {
+  const usdc = screenToken({
+    token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    symbolHint: "USDC",
+  });
+  assert.equal(usdc.allowed, true);
+
+  const junk = screenToken({
+    token: "0x0000000000000000000000000000000000000001",
+  });
+  assert.equal(junk.allowed, false);
+  assert.equal(junk.checks.onAllowlist, false);
+});
+
+test("quoteSlaEscrow computes hold and penalty", () => {
+  const quote = quoteSlaEscrow({ serviceUsd: "1.00", slaHours: 2, penaltyBps: 500 });
+  assert.equal(quote.holdUsd, 1.25);
+  assert.equal(quote.maxPenaltyUsd, 0.05);
+  assert.match(quote.releaseRule, /2h/);
 });
 
 test("bundleAgentQuote totals SKUs and discount", () => {
@@ -72,4 +96,23 @@ test("pickFacilitatorFailover prefers live low-latency rail", () => {
   ]);
   assert.equal(pick.selected?.name, "fast");
   assert.match(pick.recommendation, /fast/);
+});
+
+test("probeFacilitatorBundle uses injected fetch and ranks live rails", async () => {
+  const fakeFetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("fast")) return new Response("ok", { status: 200 });
+    if (url.includes("down")) return new Response("no", { status: 503 });
+    throw new Error("unreachable");
+  }) as typeof fetch;
+
+  const result = await probeFacilitatorBundle(
+    [
+      { name: "down", url: "https://down.example/x402" },
+      { name: "fast", url: "https://fast.example/x402" },
+    ],
+    fakeFetch,
+  );
+  assert.equal(result.selected?.name, "fast");
+  assert.equal(result.ranked[0].ok, true);
 });
