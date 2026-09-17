@@ -127,6 +127,9 @@ export const CONFIG = {
     issueDeliveryReceipt: process.env.PRICE_ISSUE_DELIVERY_RECEIPT || "$0.005",
     verifyDeliveryReceipt: process.env.PRICE_VERIFY_DELIVERY_RECEIPT || "$0.002",
     facilitatorFailover: process.env.PRICE_FACILITATOR_FAILOVER || "$0.003",
+    auditX402Challenge: process.env.PRICE_AUDIT_X402_CHALLENGE || "$0.004",
+    fingerprintPayment: process.env.PRICE_FINGERPRINT_PAYMENT || "$0.001",
+    sellerUnitEconomics: process.env.PRICE_SELLER_UNIT_ECONOMICS || "$0.002",
   },
   captcha: {
     taskTtlSec: Number(process.env.CAPTCHA_TASK_TTL_SEC || 3600),
