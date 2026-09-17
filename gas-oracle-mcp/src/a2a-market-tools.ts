@@ -5,7 +5,10 @@ import {
   bundleAgentQuote,
   issueDeliveryReceipt,
   pickFacilitatorFailover,
+  probeFacilitatorBundle,
+  quoteSlaEscrow,
   screenPayee,
+  screenToken,
   verifyDeliveryReceipt,
   type DeliveryReceipt,
 } from "./a2a-sku.js";
@@ -46,6 +49,110 @@ export const A2A_MARKET_TOOLS = [
         listedPriceUsd: args.listedPriceUsd,
         maxPriceUsd: args.maxPriceUsd,
       }),
+  },
+  {
+    name: "screen_token",
+    description: `Allowlist screen for an ERC-20 settlement asset before an agent signs x402. Costs ${CONFIG.prices.screenToken} USDC per call.`,
+    price: CONFIG.prices.screenToken,
+    zodShape: {
+      token: z.string(),
+      allowlist: z.array(z.string()).max(50).optional(),
+      denylist: z.array(z.string()).max(50).optional(),
+      symbolHint: z.string().max(16).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        token: { type: "string" },
+        allowlist: { type: "array", items: { type: "string" }, maxItems: 50 },
+        denylist: { type: "array", items: { type: "string" }, maxItems: 50 },
+        symbolHint: { type: "string" },
+      },
+      required: ["token"],
+    },
+    example: {
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      symbolHint: "USDC",
+    },
+    handler: async (args: Record<string, unknown>) =>
+      screenToken({
+        token: String(args.token),
+        allowlist: args.allowlist as string[] | undefined,
+        denylist: args.denylist as string[] | undefined,
+        symbolHint: args.symbolHint ? String(args.symbolHint) : undefined,
+      }),
+  },
+  {
+    name: "quote_sla_escrow",
+    description: `Off-chain SLA hold/penalty quote for A2A work packages. Costs ${CONFIG.prices.quoteSlaEscrow} USDC per call.`,
+    price: CONFIG.prices.quoteSlaEscrow,
+    zodShape: {
+      serviceUsd: z.union([z.number(), z.string()]),
+      slaHours: z.number(),
+      penaltyBps: z.number().int().optional(),
+      holdMultiplier: z.number().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        serviceUsd: { type: ["number", "string"] },
+        slaHours: { type: "number" },
+        penaltyBps: { type: "integer" },
+        holdMultiplier: { type: "number" },
+      },
+      required: ["serviceUsd", "slaHours"],
+    },
+    example: { serviceUsd: "1.00", slaHours: 2, penaltyBps: 500 },
+    handler: async (args: Record<string, unknown>) =>
+      quoteSlaEscrow({
+        serviceUsd: args.serviceUsd,
+        slaHours: args.slaHours,
+        penaltyBps: args.penaltyBps,
+        holdMultiplier: args.holdMultiplier,
+      }),
+  },
+  {
+    name: "probe_facilitator_bundle",
+    description: `Live HTTPS probe of 1-8 facilitators, then pick the first healthy rail. Costs ${CONFIG.prices.probeFacilitatorBundle} USDC per call.`,
+    price: CONFIG.prices.probeFacilitatorBundle,
+    zodShape: {
+      targets: z
+        .array(
+          z.object({
+            name: z.string(),
+            url: z.string(),
+          }),
+        )
+        .min(1)
+        .max(8),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        targets: {
+          type: "array",
+          minItems: 1,
+          maxItems: 8,
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              url: { type: "string" },
+            },
+            required: ["name", "url"],
+          },
+        },
+      },
+      required: ["targets"],
+    },
+    example: {
+      targets: [
+        { name: "cdp", url: "https://api.cdp.coinbase.com/platform/v2/x402" },
+        { name: "xpay", url: "https://facilitator.xpay.sh" },
+      ],
+    },
+    handler: async (args: Record<string, unknown>) =>
+      probeFacilitatorBundle(args.targets as { name: string; url: string }[]),
   },
   {
     name: "bundle_agent_quote",
