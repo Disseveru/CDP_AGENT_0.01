@@ -22,7 +22,7 @@ jobs:
     env:
       RAILWAY_URL: https://gas-oracle-mcp-production.up.railway.app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
