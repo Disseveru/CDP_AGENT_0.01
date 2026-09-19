@@ -12,6 +12,7 @@ import {
   verifyDeliveryReceipt,
   type DeliveryReceipt,
 } from "./a2a-sku.js";
+import { analyzeTokenRisk, planOnchainSlaEscrow, pollFacilitatorSettle } from "./a2a-risk-sku.js";
 
 export const A2A_MARKET_TOOLS = [
   {
@@ -326,5 +327,108 @@ export const A2A_MARKET_TOOLS = [
       ],
     },
     handler: async (args: Record<string, unknown>) => pickFacilitatorFailover(args.candidates as never),
+  },
+  {
+    name: "analyze_token_risk",
+    description: `Static ERC-20 settlement hygiene: spoofed stable names, missing transfer selectors, mint/burn, proxy hints. Costs ${CONFIG.prices.analyzeTokenRisk} USDC per call.`,
+    price: CONFIG.prices.analyzeTokenRisk,
+    zodShape: {
+      token: z.string(),
+      symbol: z.string().max(32).optional(),
+      decimals: z.number().optional(),
+      bytecodeHex: z.string().max(200_000).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        token: { type: "string" },
+        symbol: { type: "string" },
+        decimals: { type: "number" },
+        bytecodeHex: { type: "string" },
+      },
+      required: ["token"],
+    },
+    example: {
+      token: "0x0000000000000000000000000000000000000001",
+      symbol: "USDC",
+      decimals: 6,
+    },
+    handler: async (args: Record<string, unknown>) =>
+      analyzeTokenRisk({
+        token: String(args.token),
+        symbol: args.symbol ? String(args.symbol) : undefined,
+        decimals: args.decimals,
+        bytecodeHex: args.bytecodeHex ? String(args.bytecodeHex) : undefined,
+      }),
+  },
+  {
+    name: "poll_facilitator_settle",
+    description: `Idempotent x402 facilitator /settle classifier (V2 pending-vs-terminal). Costs ${CONFIG.prices.pollFacilitatorSettle} USDC per call.`,
+    price: CONFIG.prices.pollFacilitatorSettle,
+    zodShape: {
+      facilitatorUrl: z.string().url(),
+      protocol: z.enum(["v1", "v2"]).optional(),
+      body: z.record(z.unknown()).optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        facilitatorUrl: { type: "string" },
+        protocol: { type: "string", enum: ["v1", "v2"] },
+        body: { type: "object" },
+      },
+      required: ["facilitatorUrl"],
+    },
+    example: {
+      facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402/settle",
+      protocol: "v2",
+    },
+    handler: async (args: Record<string, unknown>) =>
+      pollFacilitatorSettle({
+        facilitatorUrl: String(args.facilitatorUrl),
+        protocol: args.protocol === "v1" ? "v1" : "v2",
+        body: args.body,
+      }),
+  },
+  {
+    name: "plan_onchain_sla_escrow",
+    description: `Parameter plan for an A2A SLA hold. Does not deploy a contract. Costs ${CONFIG.prices.planOnchainSlaEscrow} USDC per call.`,
+    price: CONFIG.prices.planOnchainSlaEscrow,
+    zodShape: {
+      buyer: z.string(),
+      seller: z.string(),
+      token: z.string(),
+      serviceUsd: z.union([z.number(), z.string()]),
+      slaHours: z.number(),
+      penaltyBps: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        buyer: { type: "string" },
+        seller: { type: "string" },
+        token: { type: "string" },
+        serviceUsd: { type: ["number", "string"] },
+        slaHours: { type: "number" },
+        penaltyBps: { type: "integer" },
+      },
+      required: ["buyer", "seller", "token", "serviceUsd", "slaHours"],
+    },
+    example: {
+      buyer: "0x0000000000000000000000000000000000000001",
+      seller: "0x0000000000000000000000000000000000000002",
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      serviceUsd: "2.00",
+      slaHours: 4,
+    },
+    handler: async (args: Record<string, unknown>) =>
+      planOnchainSlaEscrow({
+        buyer: String(args.buyer),
+        seller: String(args.seller),
+        token: String(args.token),
+        serviceUsd: args.serviceUsd,
+        slaHours: args.slaHours,
+        penaltyBps: args.penaltyBps,
+      }),
   },
 ];
