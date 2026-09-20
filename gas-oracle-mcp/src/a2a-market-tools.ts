@@ -12,6 +12,8 @@ import {
   verifyDeliveryReceipt,
   type DeliveryReceipt,
 } from "./a2a-sku.js";
+import { analyzeTokenBytecode } from "./token-bytecode.js";
+import { pollFacilitatorSettle } from "./settle-poll.js";
 
 export const A2A_MARKET_TOOLS = [
   {
@@ -326,5 +328,64 @@ export const A2A_MARKET_TOOLS = [
       ],
     },
     handler: async (args: Record<string, unknown>) => pickFacilitatorFailover(args.candidates as never),
+  },
+  {
+    name: "analyze_token_bytecode",
+    description: `Heuristic ERC-20 bytecode hygiene for x402 settlement assets (opcode/string flags only). Costs ${CONFIG.prices.analyzeTokenBytecode} USDC per call.`,
+    price: CONFIG.prices.analyzeTokenBytecode,
+    zodShape: {
+      token: z.string(),
+      bytecode: z.string().min(2).max(60_000),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        token: { type: "string" },
+        bytecode: { type: "string" },
+      },
+      required: ["token", "bytecode"],
+    },
+    example: {
+      token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      bytecode: "0x",
+    },
+    handler: async (args: Record<string, unknown>) =>
+      analyzeTokenBytecode({
+        token: String(args.token),
+        bytecode: String(args.bytecode),
+      }),
+  },
+  {
+    name: "poll_facilitator_settle",
+    description: `Idempotent HTTPS poll of a facilitator settle URL. Treats pending+txHash as in-progress, never double-charges. Costs ${CONFIG.prices.pollFacilitatorSettle} USDC per call.`,
+    price: CONFIG.prices.pollFacilitatorSettle,
+    zodShape: {
+      facilitatorUrl: z.string(),
+      payload: z.unknown().optional(),
+      maxAttempts: z.number().int().optional(),
+      intervalMs: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        facilitatorUrl: { type: "string" },
+        payload: {},
+        maxAttempts: { type: "integer" },
+        intervalMs: { type: "integer" },
+      },
+      required: ["facilitatorUrl"],
+    },
+    example: {
+      facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402/settle",
+      maxAttempts: 3,
+      intervalMs: 400,
+    },
+    handler: async (args: Record<string, unknown>) =>
+      pollFacilitatorSettle({
+        facilitatorUrl: String(args.facilitatorUrl),
+        payload: args.payload,
+        maxAttempts: args.maxAttempts as number | undefined,
+        intervalMs: args.intervalMs as number | undefined,
+      }),
   },
 ];
