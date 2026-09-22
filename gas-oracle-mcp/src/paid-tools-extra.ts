@@ -11,6 +11,7 @@ import {
 } from "./agent-commerce.js";
 import { X402_MARKET_TOOLS } from "./x402-market-tools.js";
 import { A2A_MARKET_TOOLS } from "./a2a-market-tools.js";
+import { TRUE_COST_MARKET_TOOLS } from "./true-cost-market-tools.js";
 import { searchAgenticMarket, checkFacilitatorHealth } from "./agentic-discovery.js";
 import {
   preflightPaySession,
@@ -290,4 +291,5 @@ export const EXTRA_PAID_TOOLS: ExtraPaidToolDefinition[] = [
   // ExtraPaidToolDefinition contract without fighting Zod object-literal variance.
   ...(X402_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
   ...(A2A_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
+  ...(TRUE_COST_MARKET_TOOLS as unknown as ExtraPaidToolDefinition[]),
 ];
