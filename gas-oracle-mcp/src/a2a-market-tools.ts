@@ -12,6 +12,7 @@ import {
   verifyDeliveryReceipt,
   type DeliveryReceipt,
 } from "./a2a-sku.js";
+import { pollFacilitatorSettle } from "./facilitator-settle-poll.js";
 
 export const A2A_MARKET_TOOLS = [
   {
@@ -326,5 +327,33 @@ export const A2A_MARKET_TOOLS = [
       ],
     },
     handler: async (args: Record<string, unknown>) => pickFacilitatorFailover(args.candidates as never),
+  },
+  {
+    name: "poll_facilitator_settle",
+    description: `Poll a facilitator HTTPS settle/verify URL and interpret pending vs settled + tx hash. Costs ${CONFIG.prices.pollFacilitatorSettle} USDC per call.`,
+    price: CONFIG.prices.pollFacilitatorSettle,
+    zodShape: {
+      facilitatorUrl: z.string().url(),
+      payload: z.unknown().optional(),
+      timeoutMs: z.number().int().optional(),
+    },
+    jsonSchema: {
+      type: "object",
+      properties: {
+        facilitatorUrl: { type: "string" },
+        payload: {},
+        timeoutMs: { type: "integer" },
+      },
+      required: ["facilitatorUrl"],
+    },
+    example: {
+      facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
+    },
+    handler: async (args: Record<string, unknown>) =>
+      pollFacilitatorSettle({
+        facilitatorUrl: String(args.facilitatorUrl),
+        payload: args.payload,
+        timeoutMs: args.timeoutMs === undefined ? undefined : Number(args.timeoutMs),
+      }),
   },
 ];
