@@ -13,6 +13,7 @@ import type {
   CaptchaType,
 } from "./types.js";
 import { CONFIG } from "../config.js";
+import { metricsCollector } from "../metrics.js";
 
 const captchaTypeSchema = z.enum(["recaptcha", "hcaptcha", "turnstile"]);
 
@@ -113,6 +114,7 @@ export async function createCaptchaTask(
 
   await saveCaptchaTask(task);
   await linkCaptchaDedupKey(input, taskId);
+  metricsCollector.recordCaptchaTaskCreated();
 
   const solveUrl = captchaSolveUrl(taskId, solveToken);
   const result = { task_id: taskId, status: "pending" as const, solve_url: solveUrl, poll_token: pollToken };
@@ -169,6 +171,9 @@ export async function completeCaptchaTask(
     completed_at: new Date().toISOString(),
   };
   await saveCaptchaTask(updated);
+  metricsCollector.recordCaptchaTaskSolved(
+    new Date(updated.completed_at as string).getTime() - new Date(task.created_at).getTime(),
+  );
   return updated;
 }
 
