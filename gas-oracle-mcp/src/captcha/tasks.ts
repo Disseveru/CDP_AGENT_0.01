@@ -6,6 +6,7 @@ import { captchaSolveUrl, getCaptchaTask, saveCaptchaTask, assertCaptchaStorageR
 import { notifyOperator } from "./notifications.js";
 import { generateCaptchaSecret, safeCompareSecret } from "./tokens.js";
 import type {
+  CaptchaCreateOutcome,
   CaptchaSubmitInput,
   CaptchaSubmitResult,
   CaptchaStatusResult,
@@ -82,17 +83,20 @@ export function shouldPreserveHandlerResultAfterMcpSettlementFailure(result: {
 export async function createCaptchaTask(
   input: CaptchaSubmitInput,
   options?: { notify?: boolean; paymentTx?: string },
-): Promise<CaptchaSubmitResult> {
+): Promise<CaptchaCreateOutcome> {
   await assertCaptchaStorageReady();
 
   const existing = await findPendingCaptchaByInput(input);
   if (existing) {
     console.log(`[captcha] Reusing pending task ${existing.task_id} for ${input.pageurl}`);
     return {
-      task_id: existing.task_id,
-      status: "pending",
-      solve_url: captchaSolveUrl(existing.task_id, existing.solve_token),
-      poll_token: existing.poll_token,
+      newlyCreated: false,
+      result: {
+        task_id: existing.task_id,
+        status: "pending",
+        solve_url: captchaSolveUrl(existing.task_id, existing.solve_token),
+        poll_token: existing.poll_token,
+      },
     };
   }
 
@@ -115,7 +119,12 @@ export async function createCaptchaTask(
   await linkCaptchaDedupKey(input, taskId);
 
   const solveUrl = captchaSolveUrl(taskId, solveToken);
-  const result = { task_id: taskId, status: "pending" as const, solve_url: solveUrl, poll_token: pollToken };
+  const result: CaptchaSubmitResult = {
+    task_id: taskId,
+    status: "pending",
+    solve_url: solveUrl,
+    poll_token: pollToken,
+  };
 
   if (options?.notify !== false) {
     void notifyOperator({
@@ -128,7 +137,12 @@ export async function createCaptchaTask(
     });
   }
 
-  return result;
+  return { newlyCreated: true, result };
+}
+
+/** HTTP submit creates tasks before settlement; only roll back tasks this call created. */
+export function shouldDeleteCaptchaTaskOnSettlementRollback(newlyCreated: boolean): boolean {
+  return newlyCreated;
 }
 
 export async function getCaptchaStatus(

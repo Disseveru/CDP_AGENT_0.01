@@ -28,6 +28,7 @@ import { isManagedProductionDeploy } from "./deploy-env.js";
 import {
   completeCaptchaTask,
   createCaptchaTask,
+  shouldDeleteCaptchaTaskOnSettlementRollback,
   getCaptchaStatus,
   parseSubmitBody,
   shouldPreserveCaptchaTaskAfterSettlementError,
@@ -538,12 +539,21 @@ function isCaptchaDevBypassRequest(req: Request): boolean {
   );
 }
 
+/** Only delete tasks this request created; reused dedup tasks belong to other clients. */
+async function rollbackCaptchaTaskAfterSettlementFailure(
+  taskId: string,
+  newlyCreated: boolean,
+): Promise<void> {
+  if (!shouldDeleteCaptchaTaskOnSettlementRollback(newlyCreated)) return;
+  await deleteCaptchaTask(taskId);
+}
+
 async function finalizeCaptchaSubmit(
   res: Response,
   input: ReturnType<typeof parseSubmitBody>,
   options?: { settlementHeaders?: Record<string, string> },
 ): Promise<void> {
-  const created = await createCaptchaTask(input, { notify: false });
+  const { result: created } = await createCaptchaTask(input, { notify: false });
   void notifyOperator({
     taskId: created.task_id,
     solveUrl: created.solve_url,
@@ -623,8 +633,11 @@ async function handleCaptchaSubmitRequest(
   }
 
   let created;
+  let captchaNewlyCreated = false;
   try {
-    created = await createCaptchaTask(input, { notify: false });
+    const outcome = await createCaptchaTask(input, { notify: false });
+    created = outcome.result;
+    captchaNewlyCreated = outcome.newlyCreated;
   } catch (error) {
     console.error("[captcha] Task creation failed after payment verification:", error);
     res.status(503).json({
@@ -666,9 +679,11 @@ async function handleCaptchaSubmitRequest(
       return;
     }
 
-    await deleteCaptchaTask(created.task_id).catch((rollbackError) => {
+    await rollbackCaptchaTaskAfterSettlementFailure(created.task_id, captchaNewlyCreated).catch(
+      (rollbackError) => {
       console.error("[captcha] Failed to roll back task after settlement throw:", rollbackError);
-    });
+    },
+    );
     console.error("[captcha] Settlement threw after task creation:", error);
     res.status(503).json({
       error: "settlement_failed",
@@ -678,9 +693,11 @@ async function handleCaptchaSubmitRequest(
   }
 
   if (!settlement.success) {
-    await deleteCaptchaTask(created.task_id).catch((error) => {
+    await rollbackCaptchaTaskAfterSettlementFailure(created.task_id, captchaNewlyCreated).catch(
+      (error) => {
       console.error("[captcha] Failed to roll back task after settlement failure:", error);
-    });
+    },
+    );
     writeHttpInstructions(res, settlement.response);
     return;
   }
@@ -926,7 +943,7 @@ function buildMcpServer(state: RuntimeState): McpServer {
 
           let created;
           try {
-            created = await createCaptchaTask(
+            const outcome = await createCaptchaTask(
               {
                 sitekey: String(args.sitekey),
                 pageurl: String(args.pageurl),
@@ -934,6 +951,7 @@ function buildMcpServer(state: RuntimeState): McpServer {
               },
               { notify: false },
             );
+            created = outcome.result;
           } catch (error) {
             console.error("[captcha] Task creation failed after MCP settlement:", error);
             return {

@@ -15,6 +15,7 @@ import { renderSolvePage } from "./solve-page.js";
 import { isCaptchaStorageConfigured } from "./store.js";
 import {
   captchaWidgetScript,
+  shouldDeleteCaptchaTaskOnSettlementRollback,
   shouldPreserveCaptchaTaskAfterSettlementError,
   shouldPreserveHandlerResultAfterMcpSettlementFailure,
   submitBodySchema,
@@ -423,6 +424,11 @@ test("renderOperatorSmsConsentPage documents operator opt-in for Twilio verifica
   assert.match(html, /Reply <strong>STOP<\/strong> to unsubscribe/);
   assert.match(html, /CAPTCHA Alert: Agent task/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test("shouldDeleteCaptchaTaskOnSettlementRollback skips reused dedup tasks", () => {
+  assert.equal(shouldDeleteCaptchaTaskOnSettlementRollback(true), true);
+  assert.equal(shouldDeleteCaptchaTaskOnSettlementRollback(false), false);
 });
 
 test("renderSolvePage delegates cross-domain targets without rendering a broken widget", () => {
