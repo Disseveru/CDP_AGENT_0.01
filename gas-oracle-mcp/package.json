@@ -48,6 +48,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
+    "proxy-addr": "^2.0.8",
     "@privy-io/server-auth": "^1.32.5",
     "viem": "^2.52.2",
     "ws": "^8.21.0",
