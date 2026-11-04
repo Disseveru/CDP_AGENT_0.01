@@ -45,7 +45,9 @@ export function parseX402Challenge(input: {
   const header = parseJson(input.paymentRequiredHeader);
   const raw = header || body;
   if (!raw) return { paymentRequired: false, accepts: [] };
-  const accepts = Array.isArray(raw.accepts) ? raw.accepts : raw.scheme ? [raw] : [];
+  const accepts = Array.isArray(raw.accepts)
+    ? raw.accepts.filter((option: unknown) => option !== null && typeof option === "object" && !Array.isArray(option))
+    : raw.scheme ? [raw] : [];
   return { paymentRequired: accepts.length > 0, accepts, raw };
 }
 
