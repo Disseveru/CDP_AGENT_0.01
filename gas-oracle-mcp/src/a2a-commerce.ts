@@ -67,6 +67,7 @@ export async function probeX402Resource(input: { url: string }): Promise<Record<
         });
         const location = response.headers.get("location");
         if (!location || response.status < 300 || response.status >= 400) break;
+        await response.body?.cancel();
         if (redirects >= 5) throw new Error("Too many redirects");
         currentUrl = await assertSafePublicUrl(new URL(location, currentUrl).toString());
       }
