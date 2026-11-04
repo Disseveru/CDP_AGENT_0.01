@@ -20,7 +20,8 @@ export function networkFromCaip(caip: unknown): CommerceNetwork | null {
     "eip155:10": "optimism",
     "eip155:137": "polygon",
   };
-  return networks[String(caip).trim()] || null;
+  const key = String(caip).trim();
+  return Object.prototype.hasOwnProperty.call(networks, key) ? networks[key] : null;
 }
 
 function parseJson(value: unknown): Record<string, any> | null {
