@@ -135,7 +135,7 @@ export async function walletReadyBundle(input: {
 }): Promise<Record<string, unknown>> {
   const network = input.network || "base";
   const [gasOracle, gasCost, balance, txStatus] = await Promise.all([
-    getGasOracle({ network }),
+    getGasOracle(network),
     estimateTxCost({ chain: network, gasLimit: 65000 }),
     getBalance({ address: input.address, network }),
     input.recentTxHash ? getTxStatus({ hash: input.recentTxHash, network }) : Promise.resolve(undefined),
