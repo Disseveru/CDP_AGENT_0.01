@@ -83,6 +83,7 @@
     "langsmith": "^0.7.6",
     "viem": "^2.52.2",
     "ws": "^8.21.0",
+    "proxy-addr": "^2.0.8",
     "bigint-buffer": "npm:four-flap-bigint-buffer@^1.1.6",
     "bn.js": "^5.2.3",
     "elliptic": "^6.6.1",
