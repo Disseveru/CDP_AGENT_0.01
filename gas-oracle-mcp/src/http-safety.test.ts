@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import dns from "node:dns/promises";
 import { test } from "node:test";
 
 import { assertSafePublicUrl, sanitizeRequestHeaders } from "./http-safety.js";
@@ -29,6 +30,30 @@ test("assertSafePublicUrl rejects embedded credentials", async () => {
 
 test("assertSafePublicUrl rejects non-http schemes", async () => {
   await assert.rejects(() => assertSafePublicUrl("file:///etc/passwd"), /Only http/);
+});
+
+test("assertSafePublicUrl rejects an aborted validation", async () => {
+  const controller = new AbortController();
+  controller.abort(new Error("deadline exceeded"));
+  await assert.rejects(
+    () => assertSafePublicUrl("https://example.com/", controller.signal),
+    /deadline exceeded/,
+  );
+});
+
+test("assertSafePublicUrl stops waiting for DNS when aborted", async (t) => {
+  const lookup = t.mock.method(dns, "lookup", () => new Promise<never>(() => {}));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("deadline exceeded")), 10);
+  try {
+    await assert.rejects(
+      () => assertSafePublicUrl("https://example.com/", controller.signal),
+      /deadline exceeded/,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  assert.equal(lookup.mock.callCount(), 1);
 });
 
 test("sanitizeRequestHeaders strips hop-by-hop headers", () => {

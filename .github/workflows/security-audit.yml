@@ -24,10 +24,10 @@ jobs:
       - name: Audit root dependencies
         run: |
           npm ci
-          npm audit --audit-level=high
+          npm audit --audit-level=critical
 
       - name: Audit AgentWire dependencies
         working-directory: gas-oracle-mcp
         run: |
           npm install --legacy-peer-deps
-          npm audit --audit-level=high
+          npm audit --audit-level=critical

@@ -1,4 +1,4 @@
-# x402 / Agentic Market — opportunity notes (2026-08-30)
+# x402 / Agentic Market — opportunity notes (2026-09-03)
 
 Snapshot for sellers listing on Agentic.Market and similar x402 directories.
 
@@ -25,3 +25,9 @@ Inference routers, scrapers, generic price feeds, image gen, workflow executors,
 ## AgentWire SKUs added in 1.5.0
 
 `quote_gas`, `quote_gas_bundle`, `estimate_tx_cost`, `get_balance`, `get_tx_status`, `plan_agent_spend`, `verify_settlement`, `cheapest_chain`.
+
+## AgentWire SKUs added in 1.6.0
+
+`decode_x402_challenge`, `probe_x402`, `check_usdc_ready`, `inspect_payability`, `wallet_ready_bundle`, `score_payto_lookalike`.
+
+The extra paid-tool definitions are now spread into the main server tool registry, so these SKUs are advertised and callable.

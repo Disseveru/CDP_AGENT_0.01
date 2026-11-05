@@ -61,7 +61,9 @@ function isPrivateIp(ip: string): boolean {
 }
 
 /** Blocks SSRF to localhost, cloud metadata, and private networks. */
-export async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
+export async function assertSafePublicUrl(rawUrl: string, signal?: AbortSignal): Promise<URL> {
+  if (signal?.aborted) throw signal.reason;
+
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -92,7 +94,22 @@ export async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
   }
 
   if (!literalIp && !numericIp) {
-    const records = await dns.lookup(hostname, { all: true });
+    const lookup = dns.lookup(hostname, { all: true });
+    let onAbort: (() => void) | undefined;
+    const aborted = signal
+      ? new Promise<never>((_, reject) => {
+          onAbort = () => reject(signal.reason);
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) onAbort();
+        })
+      : undefined;
+    let records: Awaited<typeof lookup>;
+    try {
+      records = aborted ? await Promise.race([lookup, aborted]) : await lookup;
+    } finally {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+    }
+    if (signal?.aborted) throw signal.reason;
     for (const { address } of records) {
       if (isPrivateIp(address)) {
         throw new Error(`Hostname ${hostname} resolves to blocked address ${address}`);
