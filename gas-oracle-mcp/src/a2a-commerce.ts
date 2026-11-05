@@ -53,61 +53,58 @@ export function parseX402Challenge(input: {
 }
 
 export async function probeX402Resource(input: { url: string }): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
-    const url = await assertSafePublicUrl(input.url);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8_000);
-    try {
-      let response: Response;
-      let currentUrl = url;
-      for (let redirects = 0; ; redirects++) {
-        response = await fetch(currentUrl, {
-          method: "GET",
-          redirect: "manual",
-          signal: controller.signal,
-        });
-        const location = response.headers.get("location");
-        if (!location || response.status < 300 || response.status >= 400) break;
-        await response.body?.cancel();
-        if (redirects >= 5) throw new Error("Too many redirects");
-        currentUrl = await assertSafePublicUrl(new URL(location, currentUrl).toString());
-      }
-      const reader = response.body?.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 64 * 1024) {
-            await reader.cancel();
-            break;
-          }
-          chunks.push(value);
-        }
-      } else {
-        const value = new Uint8Array(await response.arrayBuffer());
-        size = value.byteLength;
-        if (size <= 64 * 1024) chunks.push(value);
-      }
-      const text = size <= 64 * 1024 ? Buffer.concat(chunks).toString("utf8") : "";
-      const challenge = parseX402Challenge({
-        body: parseJson(text) || text,
-        paymentRequiredHeader: response.headers.get("PAYMENT-REQUIRED"),
+    let currentUrl = await assertSafePublicUrl(input.url, controller.signal);
+    let response: Response;
+    for (let redirects = 0; ; redirects++) {
+      response = await fetch(currentUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
       });
-      return {
-        url: currentUrl.toString(),
-        status: response.status,
-        contentType: response.headers.get("content-type"),
-        bodyBytes: size,
-        ...challenge,
-      };
-    } finally {
-      clearTimeout(timer);
+      const location = response.headers.get("location");
+      if (!location || response.status < 300 || response.status >= 400) break;
+      await response.body?.cancel();
+      if (redirects >= 5) throw new Error("Too many redirects");
+      currentUrl = await assertSafePublicUrl(new URL(location, currentUrl).toString(), controller.signal);
     }
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 64 * 1024) {
+          await reader.cancel();
+          break;
+        }
+        chunks.push(value);
+      }
+    } else {
+      const value = new Uint8Array(await response.arrayBuffer());
+      size = value.byteLength;
+      if (size <= 64 * 1024) chunks.push(value);
+    }
+    const text = size <= 64 * 1024 ? Buffer.concat(chunks).toString("utf8") : "";
+    const challenge = parseX402Challenge({
+      body: parseJson(text) || text,
+      paymentRequiredHeader: response.headers.get("PAYMENT-REQUIRED"),
+    });
+    return {
+      url: currentUrl.toString(),
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      bodyBytes: size,
+      ...challenge,
+    };
   } catch (error) {
     return { paymentRequired: false, accepts: [], error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
